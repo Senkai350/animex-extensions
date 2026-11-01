@@ -1,0 +1,67 @@
+name: Build and publish extensions
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: extensions-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            vendor/sdk
+            modules/source-animego
+            modules/source-anilibria
+            modules/player-cvh
+            modules/player-kodik
+            modules/player-aniboom
+            modules/player-hls
+            modules/tracker-shikimori
+            modules/tracker-jikan
+            modules/tracker-anilist
+      - name: Verify SDK contract
+        run: cargo test --locked --manifest-path vendor/sdk/Cargo.toml --workspace
+      - name: Test and compile extensions (pull requests)
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: ./scripts/build.ps1 -Test -Unsigned
+      - name: Build signed packages
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          ANMX_SIGNING_KEY: ${{ secrets.ANMX_SIGNING_KEY }}
+        run: |
+          if (-not $env:ANMX_SIGNING_KEY) { throw "Configure the ANMX_SIGNING_KEY repository secret before publishing." }
+          ./scripts/build.ps1 -Test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $base = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          cargo run --locked --manifest-path vendor/sdk/Cargo.toml -p anmx -- index "${{ github.repository_owner }}.${{ github.event.repository.name }}" "AniMex Extensions" $base dist dist
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: dist
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

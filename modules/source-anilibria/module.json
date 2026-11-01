@@ -1,0 +1,29 @@
+{
+  "id": "org.anilibria.source",
+  "kind": "source",
+  "name": "AniLibria",
+  "version": "1.5.1",
+  "api_version": 2,
+  "author": {
+    "name": "AniMex community",
+    "contact": "https://github.com/Senkai350/animex",
+    "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  "released_at": "2026-11-01T00:00:00Z",
+  "entry": "module.wasm",
+  "permissions": {
+    "network": [
+      "anilibria.top",
+      "cache.libria.fun",
+      "libria.fun"
+    ],
+    "storage": true
+  },
+  "description": "Official AniLibria source: catalog, search, filters, release metadata and players.",
+  "protocols": [
+    "anilibria.hls.v1"
+  ],
+  "languages": [
+    "ru"
+  ]
+}

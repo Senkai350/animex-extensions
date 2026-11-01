@@ -1,0 +1,11 @@
+[
+  "modules/source-animego",
+  "modules/player-cvh",
+  "modules/player-kodik",
+  "modules/player-aniboom",
+  "modules/source-anilibria",
+  "modules/player-hls",
+  "modules/tracker-shikimori",
+  "modules/tracker-jikan",
+  "modules/tracker-anilist"
+]

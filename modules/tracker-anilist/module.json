@@ -1,0 +1,27 @@
+{
+  "id": "org.anilist.tracker",
+  "kind": "tracker",
+  "name": "AniList",
+  "version": "1.0.7",
+  "api_version": 2,
+  "author": {
+    "name": "AniMex community",
+    "contact": "https://github.com/Senkai350/animex",
+    "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  "released_at": "2026-11-01T00:00:00Z",
+  "entry": "module.wasm",
+  "permissions": {
+    "network": [
+      "graphql.anilist.co",
+      "anilist.co",
+      "shikimori.io"
+    ],
+    "storage": false
+  },
+  "description": "AniList GraphQL tracker: search, details, characters and voice actors, staff, trailers, related/similar titles, airing episodes and audience statistics.",
+  "languages": [
+    "en",
+    "ja"
+  ]
+}

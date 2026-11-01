@@ -1,0 +1,37 @@
+{
+  "id": "org.animego.player.embed",
+  "kind": "player",
+  "name": "AnimeGO Embed",
+  "version": "0.1.0",
+  "api_version": 2,
+  "author": {
+    "name": "AnimeGO source (AniMex community)",
+    "contact": "https://animego.me/"
+  },
+  "released_at": "2026-11-01T12:00:00Z",
+  "entry": "module.wasm",
+  "permissions": {
+    "network": [
+      "aniboom.one",
+      "animego.me",
+      "cdnvideohub.com",
+      "plapi.cdnvideohub.com",
+      "okcdn.ru"
+    ],
+    "storage": false
+  },
+  "protocols": [
+    "animego.embed.v1"
+  ],
+  "qualities": [
+    "1080p",
+    "720p",
+    "480p",
+    "360p",
+    "240p"
+  ],
+  "languages": [
+    "ru"
+  ],
+  "description": "AnimeGO embed player: resolves animego.embed.v1 payloads (AniBoom HLS/DASH and CVH API) into streams."
+}

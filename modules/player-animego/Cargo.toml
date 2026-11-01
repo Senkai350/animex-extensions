@@ -1,0 +1,19 @@
+[package]
+name = "anm-player-animego"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+name = "anm_player_animego"
+
+[dependencies]
+anm-sdk = { path = "../../vendor/sdk/crates/anm-sdk" }
+wit-bindgen = "0.63.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2.5"
+# Needed only for tests
+dom_query = { version = "0.28", default-features = false }
+
+[workspace]

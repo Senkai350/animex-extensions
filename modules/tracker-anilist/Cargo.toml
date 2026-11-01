@@ -1,0 +1,17 @@
+[package]
+name = "anm-tracker-anilist"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+name = "anm_tracker_anilist"
+
+[dependencies]
+wit-bindgen = "0.63.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["alloc", "clock", "std"] }
+anm-sdk = { path = "../../vendor/sdk/crates/anm-sdk" }
+
+[workspace]

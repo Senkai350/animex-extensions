@@ -1,0 +1,28 @@
+{
+  "id": "org.shikimori.tracker",
+  "kind": "tracker",
+  "name": "Shikimori",
+  "version": "1.7.3",
+  "api_version": 2,
+  "author": {
+    "name": "AniMex community",
+    "contact": "https://github.com/Senkai350/animex",
+    "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  "released_at": "2026-11-01T00:00:00Z",
+  "entry": "module.wasm",
+  "permissions": {
+    "network": [
+      "shikimori.io",
+      "shikimori.one",
+      "youtube.com",
+      "img.youtube.com",
+      "i.ytimg.com"
+    ],
+    "storage": true
+  },
+  "description": "Shikimori GraphQL tracker: search, details, characters, staff, videos, screenshots, related/similar titles and audience statistics.",
+  "languages": [
+    "ru"
+  ]
+}

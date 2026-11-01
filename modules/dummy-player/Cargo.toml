@@ -1,0 +1,18 @@
+[package]
+name = "anm-dummy-player"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+name = "anm_dummy_player"
+
+[dependencies]
+wit-bindgen = "0.63.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace]
+
+[features]
+link-metadata = []

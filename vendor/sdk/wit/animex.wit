@@ -1,0 +1,545 @@
+package animex:module@0.2.0;
+
+/// Общие типы всех модулей. Единственный источник истины ABI.
+///
+/// Протокол `0.2.0` разделяет метаданные релиза и воспроизведение:
+/// источник возвращает релиз и список кандидатов-плееров, а конкретный
+/// player-модуль сам отдаёт озвучки и ссылку. Связь между источником и
+/// плеером идёт по `protocol`, а не по id модуля.
+interface types {
+  enum airing-status { ongoing, released, anons, unknown }
+
+  /// Canonical preview kinds. `anime-preview.kind` remains option<string> for
+  /// source ABI compatibility; hosts normalize it to this vocabulary.
+
+  record anime-preview {
+    id: string,
+    title: string,
+    /// Same localized names as release; excludes the main title and duplicates.
+    alternative-names: list<alternative-name>,
+    genres: list<string>,
+    description: option<string>,
+    poster: option<string>,
+    year: option<u16>,
+    score: option<f32>,
+    /// Legacy string retained for source ABI compatibility; hosts validate
+    /// and normalize it to tv, movie, ova, ona, special, tv_special, music,
+    /// pv, cm or None.
+    kind: option<string>,
+    status: airing-status,
+    episodes-count: option<u32>,
+    /// Same tracker links as release; empty when no identifiers are available.
+    tracker-data: list<tracker-data>,
+    /// Непрозрачные данные источника, которые нужно вернуть в get-release.
+    source-ref: option<string>,
+  }
+
+  /// Ссылка на релиз. `id` — стабильный ключ (маршрут, история, папки),
+  /// `payload` — необязательный JSON источника.
+  record release-ref {
+    id: string,
+    payload: option<string>,
+  }
+
+  /// Ссылка на серию. `id` — стабильный ключ, `payload` — JSON источника.
+  record episode-ref {
+    id: string,
+    payload: option<string>,
+  }
+
+  record header { name: string, value: string }
+  record quality { label: string, url: string }
+  record subtitle-track {
+    url: string,
+    lang: string,
+    label: option<string>,
+    is-default: bool,
+  }
+
+  record stream-hls {
+    url: string,
+    headers: list<header>,
+    qualities: list<quality>,
+    subtitles: list<subtitle-track>,
+  }
+  record stream-dash {
+    url: string,
+    headers: list<header>,
+    subtitles: list<subtitle-track>,
+  }
+  record stream-mp4 {
+    sources: list<quality>,
+    headers: list<header>,
+    subtitles: list<subtitle-track>,
+  }
+  record stream-mpeg { url: string, headers: list<header> }
+  record stream-iframe { url: string }
+
+  variant stream-data {
+    hls(stream-hls),
+    dash(stream-dash),
+    mp4(stream-mp4),
+    mpeg(stream-mpeg),
+    iframe(stream-iframe),
+  }
+
+  enum time-skip-type { opening, ending, other }
+
+  /// Пропускаемый интервал серии (опенинг, эндинг, реклама/прочее).
+  record time-skip {
+    kind: time-skip-type,
+    start: f32,
+    end: f32,
+  }
+
+  /// Серия без ссылок на видео: воспроизведение резолвится через player-модуль.
+  record episode {
+    id: string,
+    number: u32,
+    title: option<string>,
+    thumbnail: option<string>,
+    duration: option<f32>,
+    time-skips: list<time-skip>,
+    source-ref: option<string>,
+  }
+
+  record alternative-name {
+    name: string,
+    /// ISO 639-1 code (`ru`, `en`, `ja`, ...) or `unknown`.
+    language: string,
+  }
+
+  /// Explicit tracker identifier extracted by the source.
+  ///
+  /// `name` must match the tracker module display name (for the first-party
+  /// tracker: `Shikimori`). `data` is an opaque tracker id string (numeric id,
+  /// URL, slug — whatever that tracker uses).
+  record tracker-data {
+    name: string,
+    data: string,
+  }
+
+  /// Free-form title information rendered by the UI line by line.
+  record info-block {
+    title: string,
+    data: list<string>,
+  }
+
+  record release {
+    /// Stable source key used by routing, history and library.
+    id: string,
+    /// Main title as the source presents it (AniLibria: Russian title).
+    name: string,
+    alternative-names: list<alternative-name>,
+    tracker-data: list<tracker-data>,
+    other-info: list<info-block>,
+    banner-url: option<string>,
+    poster: option<string>,
+    description: option<string>,
+    genres: list<string>,
+    studios: list<string>,
+    status: airing-status,
+    /// Canonical kind is normalized by the host (`tv`, `movie`, ...).
+    kind: option<string>,
+    year: option<u16>,
+    trailer: option<string>,
+    total-episodes: option<u32>,
+    /// RFC3339 UTC timestamp.
+    next-episode-at: option<string>,
+    /// Rating relative to this source (not a third-party tracker).
+    rating: option<f32>,
+    /// Непрозрачные данные релиза для get-release / get-players.
+    source-ref: option<string>,
+  }
+
+  record option-pair { value: string, label: string }
+
+  record filter-select {
+    id: string,
+    label: string,
+    options: list<option-pair>,
+    default: option<string>,
+  }
+  record filter-multiselect {
+    id: string,
+    label: string,
+    options: list<option-pair>,
+    default: list<string>,
+  }
+  record filter-range {
+    id: string,
+    label: string,
+    min: f32,
+    max: f32,
+    step: option<f32>,
+    default: option<tuple<f32, f32>>,
+  }
+  record filter-toggle {
+    id: string,
+    label: string,
+    default: option<bool>,
+  }
+  record filter-text {
+    id: string,
+    label: string,
+    default: option<string>,
+  }
+
+  variant filter-field {
+    select(filter-select),
+    multiselect(filter-multiselect),
+    range(filter-range),
+    toggle(filter-toggle),
+    text(filter-text),
+  }
+
+  record page-meta {
+    page: u32,
+    per-page: u32,
+    total: option<u32>,
+    total-pages: option<u32>,
+    has-next: bool,
+  }
+  record catalog-page { items: list<anime-preview>, meta: page-meta }
+
+  record catalog-params {
+    page: u32,
+    search: option<string>,
+    sort: option<string>,
+    filters: list<tuple<string, string>>,
+  }
+
+  /// Кандидат-плеер, который источник предлагает для серии.
+  ///
+  /// `protocol` — контракт вида `anilibria.hls.v1`; `payload` — JSON этого
+  /// контракта. Хост передаёт payload только player-модулю, реализующему
+  /// протокол, и никогда не пишет его в БД или логи.
+  record player-candidate {
+    protocol: string,
+    payload: string,
+    label: option<string>,
+    /// Меньше — выше. Источник задаёт приоритет своего кандидата.
+    priority: option<u32>,
+  }
+
+  /// Озвучка конкретного плеера.
+  record dub {
+    id: string,
+    name: string,
+    language: option<string>,
+    /// Фактические качества этой озвучки. Пустой список = все качества плеера.
+    qualities: list<string>,
+    is-default: bool,
+  }
+
+  /// Возможности player-модуля (репозиторий + ранжирование).
+  record player-capabilities {
+    qualities: list<string>,
+    protocols: list<string>,
+    languages: list<string>,
+  }
+
+  record staff-ref {
+    id: string,
+    name: string,
+    alternative-names: list<alternative-name>,
+    image: option<string>,
+  }
+  record character {
+    id: string,
+    name: string,
+    alternative-names: list<alternative-name>,
+    tracker-data: list<tracker-data>,
+    image: option<string>,
+    seiyuu: list<staff-ref>,
+  }
+  record staff-member {
+    id: string,
+    name: string,
+    alternative-names: list<alternative-name>,
+    role: string,
+    image: option<string>,
+  }
+
+  enum video-kind { opening, ending, pv, trailer, other }
+  record tracker-video {
+    id: string,
+    kind: video-kind,
+    name: option<string>,
+    url: string,
+    thumbnail: option<string>,
+  }
+  record screenshot { original: string, preview: option<string> }
+  /// Tracker metadata only; id is local to the tracker + anime, not a playback id.
+  record tracker-episode {
+    id: string,
+    number: f64,
+    title: option<string>,
+    alternative-names: list<alternative-name>,
+    /// ISO 8601 date-time; date-only sources use T00:00:00. No invented UTC offset.
+    aired-at: option<string>,
+    rating: option<f32>,
+    score-scale: u8,
+    /// None means the tracker cannot classify this episode.
+    is-filler: option<bool>,
+    is-recap: option<bool>,
+    url: option<string>,
+    forum-url: option<string>,
+    video-url: option<string>,
+  }
+  record tracker-episode-page { items: list<tracker-episode>, meta: page-meta }
+  record score-count { score: u8, count: u32 }
+  record status-count { status: string, label: string, count: u32 }
+  record title-statistics {
+    rating: option<f32>,
+    score-scale: u8,
+    scores: list<score-count>,
+    statuses: list<status-count>,
+  }
+
+  enum media-type { anime, manga, other }
+  record title-card {
+    id: string,
+    name: string,
+    alternative-names: list<alternative-name>,
+    poster: option<string>,
+    media-type: media-type,
+    format: option<string>,
+    status: airing-status,
+    year: option<u16>,
+    tracker-data: list<tracker-data>,
+    source-ref: option<string>,
+    url: option<string>,
+  }
+  record title-relation { code: string, label: string }
+  record related-title { title: title-card, relation: title-relation }
+  record similar-title { title: title-card, reason: option<string> }
+}
+
+/// Host-функции, доступные модулю из песочницы.
+interface host {
+  /// WIT требует strong uniqueness имён внутри интерфейса (типы и функции
+  /// в одном пространстве имён), поэтому запись запроса называется
+  /// `http-request-params`.
+  record http-request-params {
+    url: string,
+    method: option<string>,
+    headers: list<tuple<string, string>>,
+    body: option<list<u8>>,
+  }
+  record http-response {
+    status: u16,
+    headers: list<tuple<string, string>>,
+    body: list<u8>,
+  }
+
+  /// Allowlist по permissions.network проверяется хостом.
+  http-request: func(req: http-request-params) -> result<http-response, string>;
+  log: func(level: string, message: string);
+  config-get: func(key: string) -> option<string>;
+  cache-get: func(key: string) -> option<list<u8>>;
+  cache-set: func(key: string, value: list<u8>);
+}
+
+interface source-api {
+  use types.{
+    release,
+    catalog-page,
+    catalog-params,
+    filter-field,
+    release-ref,
+    episode-ref,
+    episode,
+    player-candidate,
+  };
+
+  get-filters: func() -> result<list<filter-field>, string>;
+  get-catalog: func(params: catalog-params) -> result<catalog-page, string>;
+  get-latest: func(page: u32) -> result<catalog-page, string>;
+  get-popular: func(page: u32) -> result<catalog-page, string>;
+  search: func(query: string, params: catalog-params) -> result<catalog-page, string>;
+  get-release: func(release: release-ref) -> result<release, string>;
+  get-episodes: func(release: release-ref) -> result<list<episode>, string>;
+
+  /// Вернуть кандидатов-плееров для конкретной серии. Payload каждого
+  /// кандидата принадлежит протоколу и разбирается player-модулем.
+  get-players: func(release: release-ref, episode: episode-ref)
+                     -> result<list<player-candidate>, string>;
+}
+
+interface player-api {
+  use types.{stream-data, dub, player-capabilities};
+
+  /// Возможности плеера. Вызывается при загрузке модуля и должна быть
+  /// дешёвой (без сети).
+  describe: func() -> result<player-capabilities, string>;
+
+  /// Список озвучек для payload, полученного от источника.
+  get-dubs: func(payload: string) -> result<list<dub>, string>;
+
+  /// Резолв конкретной озвучки и качества в поток.
+  get-link: func(payload: string, dub-id: string, quality: option<string>)
+                  -> result<stream-data, string>;
+}
+
+interface tracker-api {
+  use types.{
+    release,
+    anime-preview,
+    character,
+    screenshot,
+    staff-member,
+    tracker-video,
+  };
+
+  search: func(query: string, limit: u32) -> result<list<anime-preview>, string>;
+  get-anime: func(id: string) -> result<release, string>;
+  get-characters: func(id: string) -> result<list<character>, string>;
+  get-staff: func(id: string) -> result<list<staff-member>, string>;
+  get-videos: func(id: string) -> result<list<tracker-video>, string>;
+  get-screenshots: func(id: string) -> result<list<screenshot>, string>;
+}
+
+/// Optional link response with playback-specific skip intervals. The original
+/// player-api and stream-data ABI stay unchanged for existing binaries.
+interface player-link-api {
+  use types.{stream-data, time-skip};
+  record playback-link {
+    %stream: stream-data,
+    time-skips: option<list<time-skip>>,
+  }
+  get-link: func(payload: string, dub-id: string, quality: option<string>)
+                  -> result<playback-link, string>;
+}
+world player-module-link {
+  import host;
+  export player-api;
+  export player-link-api;
+}
+world player-link-reader {
+  export player-link-api;
+}
+
+world source-module {
+  import host;
+  export source-api;
+}
+
+world player-module {
+  import host;
+  export player-api;
+}
+
+world tracker-module {
+  import host;
+  export tracker-api;
+}
+
+/// Служебный world только с host-импортами — для построения Linker хоста.
+world host-imports {
+  import host;
+}
+
+/// Optional presentation hints.
+interface filter-ui-api {
+  enum choice-presentation { dropdown, checkbox-select, radio-select }
+  record filter-presentation { id: string, presentation: choice-presentation }
+  get-filter-ui: func() -> result<list<filter-presentation>, string>;
+}
+
+/// Optional sort controls supported by a source.
+interface catalog-sorting-api {
+  use types.{option-pair};
+  record sorting-config {
+    id: string,
+    label: string,
+    options: list<option-pair>,
+    default: option<string>,
+    directions: list<option-pair>,
+    default-direction: option<string>,
+  }
+  get-sorting: func() -> result<option<sorting-config>, string>;
+}
+world source-module-ui {
+  import host;
+  export source-api;
+  export filter-ui-api;
+}
+world source-module-catalog {
+  import host;
+  export source-api;
+  export filter-ui-api;
+  export catalog-sorting-api;
+}
+world filter-ui-reader {
+  export filter-ui-api;
+}
+world catalog-sorting-reader {
+  export catalog-sorting-api;
+}
+
+/// Optional capabilities, independent of source/tracker role. Tracker references
+/// use the tracker-local id and no payload. Missing export means unsupported;
+/// a supported export returning [] means no results.
+interface related-titles-api {
+  use types.{release-ref, related-title};
+  get-related: func(release: release-ref) -> result<list<related-title>, string>;
+}
+interface similar-titles-api {
+  use types.{release-ref, similar-title};
+  get-similar: func(release: release-ref) -> result<list<similar-title>, string>;
+}
+world related-titles-reader { export related-titles-api; }
+world similar-titles-reader { export similar-titles-api; }
+world tracker-module-titles {
+  import host;
+  export tracker-api;
+  export related-titles-api;
+  export similar-titles-api;
+  export statistics-api;
+}
+
+/// Example source implementing only the optional related capability.
+world source-module-related {
+  import host;
+  export source-api;
+  export related-titles-api;
+}
+
+/// Optional aggregate audience statistics, independent of module role.
+interface statistics-api {
+  use types.{release-ref, title-statistics};
+  get-statistics: func(release: release-ref) -> result<title-statistics, string>;
+}
+world statistics-reader { export statistics-api; }
+
+/// Optional paginated episode metadata. Page numbering starts at 1.
+interface tracker-episodes-api {
+  use types.{tracker-episode-page};
+  get-episodes: func(id: string, page: u32) -> result<tracker-episode-page, string>;
+}
+world tracker-episodes-reader { export tracker-episodes-api; }
+world tracker-module-episodes {
+  include tracker-module-titles;
+  export tracker-episodes-api;
+}
+
+/// Optional character roles without breaking the original tracker ABI.
+interface tracker-character-roles-api {
+  use types.{character};
+  record character-with-role {
+    character: character,
+    /// main / supporting; none means the provider did not report a role.
+    role: option<string>,
+  }
+  get-characters: func(id: string) -> result<list<character-with-role>, string>;
+}
+world tracker-character-roles-reader { export tracker-character-roles-api; }
+world tracker-module-character-roles {
+  include tracker-module-titles;
+  export tracker-character-roles-api;
+}
+world tracker-module-episodes-character-roles {
+  include tracker-module-episodes;
+  export tracker-character-roles-api;
+}
