@@ -3,3 +3,4 @@ dist/
 *.private
 .env
 dist-vps/
+**/__pycache__/

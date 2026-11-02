@@ -1,0 +1,11 @@
+[Unit]
+Description=Check AniMex extension publication every two minutes
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=2min
+Persistent=true
+Unit=animex-extensions-sync.service
+
+[Install]
+WantedBy=timers.target
