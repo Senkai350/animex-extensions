@@ -48,12 +48,30 @@ jobs:
           $base = "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
           cargo run --locked --manifest-path vendor/sdk/Cargo.toml -p anmx -- index "${{ github.repository_owner }}.${{ github.event.repository.name }}" "AniMex Extensions" $base dist dist
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-pages-artifact@v3
+      - name: Generate VPS catalog (same packages and signing key)
         if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          ANMX_SIGNING_KEY: ${{ secrets.ANMX_SIGNING_KEY }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-vps | Out-Null
+          Copy-Item dist/*.anmx dist-vps/
+          cargo run --locked --manifest-path vendor/sdk/Cargo.toml -p anmx -- index "${{ github.repository_owner }}.${{ github.event.repository.name }}" "AniMex Extensions" "https://senkai.fun/extensions/" dist-vps dist-vps
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload VPS publication
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vps-extensions
+          path: dist-vps/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request' && !github.event.repository.private
         with:
           path: dist
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !github.event.repository.private
     needs: build
     runs-on: ubuntu-latest
     permissions:

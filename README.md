@@ -2,7 +2,9 @@
 
 Репозиторий: https://github.com/Senkai350/animex-extensions
 
-URL для подключения в AniMex: **https://senkai350.github.io/animex-extensions/repo.json**
+URL для подключения в AniMex (VPS): **https://senkai.fun/extensions/repo.json**
+
+GitHub Pages (когда репозиторий публичный): **https://senkai350.github.io/animex-extensions/repo.json**
 
 Публичный ключ и его SHA-256: [repository-key.json](repository-key.json).
 SDK: https://github.com/Senkai350/animex-sdk
@@ -29,6 +31,20 @@ cargo run --locked --manifest-path vendor/sdk/Cargo.toml -p anmx -- index org.ex
 вставьте ссылку на repo.json в Модули → Каталог и репозитории.
 Используйте чистый staging dist/ для каждого выпуска. Один ID должен иметь одну
 актуальную версию в каталоге. Не перезаписывайте опубликованную версию другими байтами.
+
+## VPS и GitHub Pages
+
+Workflow подписывает один набор `.anmx` и создаёт два независимых подписанных
+каталога с разными базовыми URL. Артефакт `vps-extensions` публикуется при каждом
+push в main и ручном запуске; VPS проверяет новые успешные сборки каждые две минуты,
+проверяет подпись и хеши и атомарно переключает каталог. Исходники не раздаются.
+
+В приватном репозитории Pages пропускается и не блокирует публикацию VPS.
+После открытия репозитория включите Settings → Pages → GitHub Actions:
+публикация Pages возобновится автоматически; VPS продолжит работать.
+Оба каталога используют существующий `ANMX_SIGNING_KEY`; ключ менять не нужно.
+Файлы на VPS публичны, даже пока исходный GitHub-репозиторий приватный.
+Инструкции сервера: [deploy/README.md](deploy/README.md).
 
 ## GitHub Pages
 
