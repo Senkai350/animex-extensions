@@ -2,14 +2,14 @@
   "id": "org.anilist.tracker",
   "kind": "tracker",
   "name": "AniList",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "api_version": 2,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",
     "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
   },
-  "released_at": "2026-11-01T00:00:00Z",
+  "released_at": "2026-11-04T00:00:00Z",
   "entry": "module.wasm",
   "permissions": {
     "network": [

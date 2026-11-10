@@ -305,7 +305,28 @@ fn staff_ref(node: StaffNode) -> StaffRef { StaffRef { id: node.id.to_string(), 
 fn staff_member(edge: StaffEdge) -> Option<StaffMember> { let node = edge.node?; Some(StaffMember { id: node.id.to_string(), name: name(&node.name), alternative_names: node.name.alternative.iter().map(|v| AlternativeName { name: v.clone(), language: "unknown".into() }).collect(), role: edge.role.unwrap_or_else(|| "Staff".into()), image: image(node.image.as_ref()) }) }
 fn card(media: MediaNode) -> TitleCard { let p = preview(&media); TitleCard { id: media.id.to_string(), name: p.title, alternative_names: p.alternative_names, poster: p.poster, media_type: if media.media_type.as_deref() == Some("MANGA") { MediaType::Manga } else { MediaType::Anime }, format: format(media.format.as_deref()), status: status(media.status.as_deref()), year: year(&media.start_date, media.season_year), tracker_data: tracker_data(&media), source_ref: None, url: media.site_url.or_else(|| Some(format!("{SITE}/anime/{}", media.id))) } }
 fn episode(item: Airing) -> TrackerEpisode { TrackerEpisode { id: item.id.to_string(), number: item.episode as f64, title: None, alternative_names: vec![], aired_at: chrono::DateTime::from_timestamp(item.airing_at, 0).map(|v| v.to_rfc3339()), rating: None, score_scale: 10, is_filler: None, is_recap: None, url: Some(format!("{SITE}/anime/{}/{}", item.media_id, item.episode)), forum_url: None, video_url: None } }
-fn statistics(media: &MediaNode) -> TitleStatistics { let scores = media.stats.as_ref().map(|s| s.score_distribution.iter().filter_map(|v| Some(ScoreCount { score: u8::try_from(v.score?).ok()?, count: u32::try_from(v.amount?).ok()? })).collect()).unwrap_or_default(); let statuses = media.stats.as_ref().map(|s| s.status_distribution.iter().filter_map(|v| { let raw = v.status.clone()?; let count = u32::try_from(v.amount?).ok()?; Some(StatusCount { label: raw.to_ascii_lowercase().replace('_', " "), status: raw, count }) }).collect()).unwrap_or_default(); TitleStatistics { rating: media.weighted_score.map(|v| v as f32 / 10.0), score_scale: 10, scores, statuses } }
+fn statistics(media: &MediaNode) -> TitleStatistics {
+    let scores = media.stats.as_ref().map(|stats| stats.score_distribution.iter().filter_map(|row| {
+        // AniList buckets are 10, 20, …, 100; the host contract uses 1–10.
+        let raw = row.score?;
+        if !(10..=100).contains(&raw) || raw % 10 != 0 { return None; }
+        Some(ScoreCount { score: (raw / 10) as u8, count: u32::try_from(row.amount?).ok()? })
+    }).collect()).unwrap_or_default();
+    let statuses = media.stats.as_ref().map(|stats| stats.status_distribution.iter().filter_map(|row| {
+        let raw = row.status.as_deref()?;
+        let (status, label) = match raw {
+            "CURRENT" => ("watching", "Смотрю"),
+            "PLANNING" => ("planned", "Запланировано"),
+            "COMPLETED" => ("completed", "Просмотрено"),
+            "DROPPED" => ("dropped", "Брошено"),
+            "PAUSED" => ("on_hold", "Отложено"),
+            "REPEATING" => ("rewatching", "Пересматриваю"),
+            _ => (raw, raw),
+        };
+        Some(StatusCount { status: status.into(), label: label.into(), count: u32::try_from(row.amount?).ok()? })
+    }).collect()).unwrap_or_default();
+    TitleStatistics { rating: media.weighted_score.map(|v| v as f32 / 10.0), score_scale: 10, scores, statuses }
+}
 
 struct Component;
 impl Guest for Component {
@@ -365,5 +386,58 @@ impl exports::animex::module::similar_titles_api::Guest for Component {
 }
 impl exports::animex::module::statistics_api::Guest for Component { fn get_statistics(release: ReleaseRef) -> Result<TitleStatistics, String> { Ok(statistics(&fetch(&release.id)?)) } }
 impl exports::animex::module::tracker_episodes_api::Guest for Component { fn get_episodes(id: String, page: u32) -> Result<TrackerEpisodePage, String> { let media = fetch(&id)?; let schedule = media.airing_schedule.ok_or_else(|| "AniList: airing schedule unavailable".to_string())?; Ok(TrackerEpisodePage { items: schedule.nodes.into_iter().map(episode).collect(), meta: animex::module::types::PageMeta { page: page.max(1), per_page: 50, total: Some(schedule.page_info.total), total_pages: Some(schedule.page_info.last_page), has_next: schedule.page_info.has_next_page } }) } }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_all_anilist_score_buckets_and_preserves_votes() {
+        let media: MediaNode = serde_json::from_value(serde_json::json!({
+            "weightedScore": 87,
+            "stats": { "scoreDistribution": (1..=10).map(|n| serde_json::json!({ "score": n * 10, "amount": n * 13 })).collect::<Vec<_>>() }
+        })).unwrap();
+        let result = statistics(&media);
+        assert_eq!(result.score_scale, 10);
+        assert_eq!(result.rating, Some(8.7));
+        assert_eq!(result.scores.iter().map(|row| row.score).collect::<Vec<_>>(), (1..=10).collect::<Vec<_>>());
+        assert_eq!(result.scores.iter().map(|row| row.count).sum::<u32>(), 715);
+        assert_eq!(result.scores[9].count, 130);
+    }
+
+    #[test]
+    fn rejects_invalid_buckets_and_counts_without_inventing_scores() {
+        let media: MediaNode = serde_json::from_value(serde_json::json!({
+            "stats": { "scoreDistribution": [
+                { "score": 0, "amount": 5 }, { "score": 110, "amount": 5 },
+                { "score": 15, "amount": 5 }, { "score": 20, "amount": -1 },
+                { "amount": 5 }, { "score": 30 }, { "score": 100, "amount": 0 }
+            ] }
+        })).unwrap();
+        let result = statistics(&media);
+        assert_eq!(result.scores.len(), 1);
+        assert_eq!(result.scores[0].score, 10);
+        assert_eq!(result.scores[0].count, 0);
+        assert_eq!(result.rating, None);
+        assert!(statistics(&MediaNode::default()).scores.is_empty());
+    }
+
+    #[test]
+    fn maps_statuses_to_host_keys_and_keeps_unknown_statuses() {
+        let media: MediaNode = serde_json::from_value(serde_json::json!({
+            "stats": { "statusDistribution": [
+                { "status": "CURRENT", "amount": 5 }, { "status": "PLANNING", "amount": 6 },
+                { "status": "COMPLETED", "amount": 7 }, { "status": "DROPPED", "amount": 8 },
+                { "status": "PAUSED", "amount": 9 }, { "status": "REPEATING", "amount": 10 },
+                { "status": "FUTURE", "amount": 11 }
+            ] }
+        })).unwrap();
+        let result = statistics(&media);
+        assert_eq!(result.statuses.iter().map(|row| row.status.as_str()).collect::<Vec<_>>(),
+            vec!["watching", "planned", "completed", "dropped", "on_hold", "rewatching", "FUTURE"]);
+        assert_eq!(result.statuses[0].label, "Смотрю");
+        assert_eq!(result.statuses.iter().map(|row| row.count).sum::<u32>(), 56);
+    }
+}
 
 export!(Component);

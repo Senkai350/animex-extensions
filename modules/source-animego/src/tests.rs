@@ -203,6 +203,56 @@ fn schedule_rows_parse_numbers_titles_and_release_state() {
 // --- release -------------------------------------------------------------------
 
 #[test]
+fn release_extracts_tracker_ids_from_reference_links() {
+    let refs = r#"<div class="content-ref-ids">
+      <a href="//shikimori.io/animes/63431"><span>7.04</span></a>
+      <a href="http://world-art.ru/animation/animation.php?id=12789"></a>
+      <a href="//kinopoisk.ru/film/14669309"></a>
+      <a href="//myanimelist.net/anime/63431"><span>7.36</span></a>
+    </div>"#;
+    let release = map_release(&format!("{ENTITY_HTML}{refs}"), "3815").unwrap();
+    let values: Vec<_> = release.tracker_data.iter().map(|item| (item.name.as_str(), item.data.as_str())).collect();
+    assert_eq!(values, vec![("Shikimori", "63431"), ("WorldArt", "12789"), ("Kinopoisk", "14669309"), ("MyAnimeList", "63431")]);
+}
+
+#[test]
+fn tracker_links_accept_aliases_slugs_and_remove_duplicates() {
+    let document = dom_query::Document::from(r#"<div class="content-ref-ids">
+      <a href="https://www.shikimori.one/animes/00020-naruto?x=1#details"></a>
+      <a href="https://shikimori.me/animes/20"></a>
+      <a href="https://myanimelist.net/anime/20/Naruto"></a>
+      <a href="https://myanimelist.net/anime/20/"></a>
+      <a href="https://www.kinopoisk.ru/series/123/"></a>
+    </div>"#);
+    let values = release_tracker_data(&document);
+    assert_eq!(values.len(), 3);
+    assert_eq!(values[0].name, "Shikimori");
+    assert_eq!(values[0].data, "20");
+    assert_eq!(values[1].data, "20");
+    assert_eq!(values[2].data, "123");
+}
+
+#[test]
+fn tracker_links_ignore_invalid_ids_domains_and_unrelated_links() {
+    let document = dom_query::Document::from(r#"
+      <a href="https://myanimelist.net/anime/99">Outside reference block</a>
+      <div class="content-ref-ids">
+        <a href="https://myanimelist.net.evil.test/anime/20"></a>
+        <a href="https://evil.test/?url=https://myanimelist.net/anime/20"></a>
+        <a href="https://myanimelist.net/manga/20"></a>
+        <a href="https://shikimori.io/animes/0"></a>
+        <a href="https://myanimelist.net/anime/-1"></a>
+        <a href="https://myanimelist.net/anime/12oops"></a>
+        <a href="https://myanimelist.net/anime/9999999999999999999999999999999999"></a>
+        <a href="https://world-art.ru/animation/animation.php?id=nope"></a>
+        <a href="https://kinopoisk.ru/name/123"></a>
+        <a href="javascript:alert(1)"></a><a href="/anime/20"></a><a></a>
+      </div>"#);
+    assert!(release_tracker_data(&document).is_empty());
+    assert!(map_release(ENTITY_HTML, "3815").unwrap().tracker_data.is_empty());
+}
+
+#[test]
 fn release_page_maps_fields_and_other_info() {
     let release = map_release(ENTITY_HTML, "3815").expect("release maps");
     assert_eq!(release.id, "3815");

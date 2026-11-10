@@ -25,7 +25,7 @@ use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
     FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, Release,
-    ReleaseRef,
+    ReleaseRef, TrackerData,
 };
 use exports::animex::module::catalog_sorting_api::Guest as SortingGuest;
 use exports::animex::module::filter_ui_api::Guest as FilterUiGuest;
@@ -1037,6 +1037,37 @@ fn structured_release(document: &dom_query::Document) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+fn release_tracker_data(document: &dom_query::Document) -> Vec<TrackerData> {
+    let base = Url::parse(DEFAULT_MIRROR).expect("valid AnimeGO base URL");
+    let mut result: Vec<TrackerData> = Vec::new();
+    for node in document.select(".content-ref-ids a[href]").nodes().iter() {
+        let Some(href) = node.attr("href") else { continue };
+        let Ok(url) = base.join(href.trim()) else { continue };
+        if !matches!(url.scheme(), "http" | "https") { continue; }
+        let host = url.host_str().unwrap_or_default().trim_start_matches("www.");
+        let path: Vec<_> = url.path().trim_matches('/').split('/').collect();
+        let (name, id) = match host {
+            "shikimori.io" | "shikimori.one" | "shikimori.me" | "shikimori.org"
+                if path.first() == Some(&"animes") => ("Shikimori", path.get(1).copied().map(str::to_string)),
+            "myanimelist.net" if path.first() == Some(&"anime") =>
+                ("MyAnimeList", path.get(1).copied().map(str::to_string)),
+            "world-art.ru" if url.path() == "/animation/animation.php" =>
+                ("WorldArt", url.query_pairs().find(|(key, _)| key == "id").map(|(_, id)| id.into_owned())),
+            "kinopoisk.ru" if matches!(path.first(), Some(&"film" | &"series")) =>
+                ("Kinopoisk", path.get(1).copied().map(str::to_string)),
+            _ => continue,
+        };
+        let Some(id) = id else { continue };
+        // Shikimori links may include a title slug after the numeric identifier.
+        let id = if name == "Shikimori" { id.split('-').next().unwrap_or_default() } else { &id };
+        if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()) { continue; }
+        let Ok(id) = id.parse::<u64>() else { continue };
+        if id == 0 || result.iter().any(|item| item.name == name) { continue; }
+        result.push(TrackerData { name: name.into(), data: id.to_string() });
+    }
+    result
+}
+
 fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
     let document = document(body);
     let entity = document.select("div.entity");
@@ -1181,7 +1212,7 @@ fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
         id: requested_id.to_string(),
         name: title,
         alternative_names: alt_titles,
-        tracker_data: Vec::new(),
+        tracker_data: release_tracker_data(&document),
         other_info,
         banner_url: banner,
         poster,

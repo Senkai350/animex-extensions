@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "anm-source-animego"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anm-sdk",
  "dom_query",
