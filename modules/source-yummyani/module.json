@@ -1,0 +1,25 @@
+{
+  "id": "org.yummyani.source",
+  "kind": "source",
+  "name": "YummyAnime",
+  "version": "0.1.0",
+  "api_version": 2,
+  "author": {
+    "name": "AniMex community",
+    "contact": "https://github.com/Senkai350/animex",
+    "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  "released_at": "2026-11-21T00:00:00Z",
+  "entry": "module.wasm",
+  "permissions": {
+    "network": [
+      "old.yummyani.me",
+      "ru.yummyani.me"
+    ],
+    "storage": false
+  },
+  "description": "YummyAnime catalog, releases and episodes with independent CVH, Kodik, Alloha and Aksor players.",
+  "languages": [
+    "ru"
+  ]
+}

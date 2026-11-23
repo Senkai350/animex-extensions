@@ -347,6 +347,10 @@ pub(crate) struct CardItem {
     pub alt_title: Option<String>,
     pub poster: Option<String>,
     pub score: Option<f32>,
+    pub description: Option<String>,
+    pub genres: Vec<String>,
+    pub year: Option<u16>,
+    pub kind: Option<String>,
 }
 
 /// Parse all cards from an AnimeGO listing page.
@@ -425,6 +429,50 @@ pub(crate) fn parse_cards(html: &str) -> Vec<CardItem> {
                 let text = clean_text(&badge.text());
                 text.replace(',', ".").trim().parse::<f32>().ok()
             });
+        let description = card
+            .select(".ani-list__item-description")
+            .nodes()
+            .iter()
+            .find_map(|node| {
+                let text = clean_text(&node.text());
+                (!text.is_empty()).then_some(text)
+            });
+        let genres = card
+            .select(".ani-list__item-genres a[href*='/anime/genre/']")
+            .nodes()
+            .iter()
+            .map(|node| clean_text(&node.text()))
+            .filter(|text| !text.is_empty())
+            .collect();
+        let year = card
+            .select(
+                "a[href*='/anime/season/'], .ani-grid__item-genres .ani-grid__item-genres__link",
+            )
+            .nodes()
+            .iter()
+            .find_map(|node| {
+                node.attr("href")
+                    .and_then(|href| year_from_text(href.as_ref()))
+                    .or_else(|| year_from_text(&node.text()))
+            });
+        let kind = card
+            .select("a[href*='/anime/type/'], .ani-grid__item-genres .ani-grid__item-genres__link")
+            .nodes()
+            .iter()
+            .find_map(|node| {
+                let href = node.attr("href");
+                let slug = href
+                    .as_ref()
+                    .filter(|href| href.contains("/anime/type/"))
+                    .and_then(|href| href.trim_end_matches('/').rsplit('/').next());
+                let label = match slug {
+                    Some("tv") | Some("movie") | Some("ova") | Some("ona") | Some("special") => {
+                        slug
+                    }
+                    _ => kind_from_label(&node.text()),
+                };
+                label.map(str::to_string)
+            });
         seen.push(id.clone());
         cards.push(CardItem {
             id,
@@ -433,6 +481,10 @@ pub(crate) fn parse_cards(html: &str) -> Vec<CardItem> {
             alt_title,
             poster,
             score,
+            description,
+            genres,
+            year,
+            kind,
         });
     }
     cards
@@ -479,12 +531,12 @@ pub(crate) fn preview_from_card(card: &CardItem) -> AnimePreview {
         id: format!("{}-{}", card.slug, card.id),
         title: card.title.clone(),
         alternative_names,
-        genres: Vec::new(),
-        description: None,
+        genres: card.genres.clone(),
+        description: card.description.clone(),
         poster: card.poster.clone(),
-        year: None,
+        year: card.year,
         score: card.score,
-        kind: None,
+        kind: card.kind.clone(),
         status: AiringStatus::Unknown,
         episodes_count: None,
         tracker_data: Vec::new(),
@@ -934,6 +986,7 @@ fn build_list_url_for(
                 query
                     .append_pair("sort", sort)
                     .append_pair("direction", "desc");
+                query.append_pair("view", "list");
             }
             drop(query);
             url.to_string().trim_end_matches('?').to_string()

@@ -1,8 +1,11 @@
 [
   "modules/source-animego",
+  "modules/source-yummyani",
   "modules/player-cvh",
   "modules/player-kodik",
   "modules/player-aniboom",
+  "modules/player-alloha",
+  "modules/player-aksor",
   "modules/source-anilibria",
   "modules/player-hls",
   "modules/tracker-shikimori",

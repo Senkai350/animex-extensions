@@ -100,6 +100,42 @@ fn cards_parse_from_listing_grid() {
 }
 
 #[test]
+fn cards_parse_scoped_list_and_grid_metadata() {
+    let list = r#"<div class="ani-list__item">
+      <a class="d-block" href="/anime/example-123" title="Example"></a>
+      <p class="ani-list__item-description">A synopsis.</p>
+      <div class="ani-list__item-genres"><a href="/anime/genre/action">Action</a></div>
+      <a href="/anime/season/2024">2024</a><a href="/anime/type/tv">TV</a>
+    </div>"#;
+    let card = &parse_cards(list)[0];
+    assert_eq!(card.description.as_deref(), Some("A synopsis."));
+    assert_eq!(card.genres, vec!["Action"]);
+    assert_eq!(card.year, Some(2024));
+    assert_eq!(card.kind.as_deref(), Some("tv"));
+    let preview = preview_from_card(card);
+    assert_eq!(preview.genres, vec!["Action"]);
+    assert_eq!(preview.description.as_deref(), Some("A synopsis."));
+    assert_eq!(preview.year, Some(2024));
+    assert_eq!(preview.kind.as_deref(), Some("tv"));
+    assert_eq!(preview.source_ref, None);
+
+    let grid = r#"<div class="ani-grid__item"><a href="/anime/example-124" title="Example"></a>
+      <div class="ani-grid__item-genres"><span class="ani-grid__item-genres__link">Фильм</span>
+      <span class="ani-grid__item-genres__link">2023</span></div></div>"#;
+    let card = &parse_cards(grid)[0];
+    assert_eq!(card.kind.as_deref(), Some("movie"));
+    assert_eq!(card.year, Some(2023));
+    assert!(card.description.is_none());
+    assert!(card.genres.is_empty());
+    let preview = preview_from_card(card);
+    assert_eq!(preview.kind.as_deref(), Some("movie"));
+    assert_eq!(preview.year, Some(2023));
+    assert!(preview.description.is_none());
+    assert!(preview.genres.is_empty());
+    assert_eq!(preview.source_ref, None);
+}
+
+#[test]
 fn id_from_href_handles_plain_ids_and_rejects_gaps() {
     assert_eq!(id_from_href("/anime/naruto-70"), Some("70".to_string()));
     assert_eq!(id_from_href("/anime/top-250"), None);
@@ -328,6 +364,7 @@ fn list_urls_carry_page_sort_and_type() {
     let url = build_list_url_for(TEST_BASE, 2, "anime", None, &[], "POPULARITY");
     assert!(url.contains("/anime/2?"), "{url}");
     assert!(url.contains("sort=rating"), "{url}");
+    assert!(url.contains("view=list"), "{url}");
 
     let url = build_list_url_for(
         TEST_BASE,
@@ -346,6 +383,7 @@ fn list_urls_carry_page_sort_and_type() {
         !url.contains("page="),
         "first search page omits page: {url}"
     );
+    assert!(!url.contains("view=list"));
 }
 
 #[test]

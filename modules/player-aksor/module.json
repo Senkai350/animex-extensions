@@ -1,0 +1,27 @@
+{
+  "id": "org.aksor.player",
+  "kind": "player",
+  "name": "Aksor",
+  "version": "0.1.0",
+  "api_version": 2,
+  "author": {
+    "name": "AniMex community",
+    "contact": "https://github.com/Senkai350/animex",
+    "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  "released_at": "2026-11-21T00:00:00Z",
+  "entry": "module.wasm",
+  "permissions": {
+    "network": [
+      "player.aksor.tv"
+    ],
+    "storage": false
+  },
+  "description": "Reusable Aksor iframe player; source-independent provider embed protocol.",
+  "protocols": [
+    "aksor.embed.v1"
+  ],
+  "languages": [
+    "ru"
+  ]
+}
