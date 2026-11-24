@@ -1,8 +1,5 @@
-name: Build and publish extensions
+name: Manual cloud build (local release is the default)
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read

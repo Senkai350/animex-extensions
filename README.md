@@ -4,7 +4,7 @@
 
 URL для подключения в AniMex (VPS): **https://senkai.fun/extensions/repo.json**
 
-GitHub Pages (когда репозиторий публичный): **https://senkai350.github.io/animex-extensions/repo.json**
+GitHub Pages (только ручной запасной workflow): **https://senkai350.github.io/animex-extensions/repo.json**
 
 Публичный ключ и его SHA-256: [repository-key.json](repository-key.json).
 SDK: https://github.com/Senkai350/animex-sdk
@@ -32,31 +32,37 @@ cargo run --locked --manifest-path vendor/sdk/Cargo.toml -p anmx -- index org.ex
 Используйте чистый staging dist/ для каждого выпуска. Один ID должен иметь одну
 актуальную версию в каталоге. Не перезаписывайте опубликованную версию другими байтами.
 
-## VPS и GitHub Pages
+## Локальная сборка и публикация (основной способ)
 
-Workflow подписывает один набор `.anmx` и создаёт два независимых подписанных
-каталога с разными базовыми URL. Артефакт `vps-extensions` публикуется при каждом
-push в main и ручном запуске; VPS проверяет новые успешные сборки каждые две минуты,
-проверяет подпись и хеши и атомарно переключает каталог. Исходники не раздаются.
+Сборку запускает разработчик или агент на своём компьютере. GitHub Actions
+не нужен: автоматические cloud-сборки при push/PR отключены, workflow оставлен
+только для ручного запуска как запасной вариант.
 
-В приватном репозитории Pages пропускается и не блокирует публикацию VPS.
-После открытия репозитория включите Settings → Pages → GitHub Actions:
-публикация Pages возобновится автоматически; VPS продолжит работать.
-Оба каталога используют существующий `ANMX_SIGNING_KEY`; ключ менять не нужно.
-Файлы на VPS публичны, даже пока исходный GitHub-репозиторий приватный.
-Инструкции сервера: [deploy/README.md](deploy/README.md).
+```powershell
+# Проверить и собрать подписанные пакеты локально:
+pwsh -NoProfile -File scripts/release.ps1
+# После коммита и push исходников в main — собрать и загрузить GitHub Release:
+pwsh -NoProfile -File scripts/release.ps1 -Publish
+```
 
-## GitHub Pages
+Нужен существующий `ANMX_SIGNING_KEY` или `~/.animex/signing-key.private`.
+Скрипт проверяет ключ, запускает тесты SDK и модулей, собирает полный каталог
+в новую папку `dist-releases/` и публикует готовые assets через draft → Latest.
+Повышайте `version` в `module.json` при изменении плагина.
 
-1. Загрузите этот проект в отдельный публичный Git-репозиторий с main branch.
-2. Добавьте Actions secret ANMX_SIGNING_KEY: случайный 32-byte приватный seed
-   Ed25519 в формате ed25519:base64. Храните ключ вне репозитория.
-3. Выберите GitHub Actions в Settings → Pages.
-4. Workflow publish.yml проверяет PR без секретов, а main собирает/подписывает
-   пакеты и публикует repo.json, index.json и .anmx на Pages.
+После первого выпуска можно подключать плагины **напрямую из GitHub**:
 
-URL подключения: https://OWNER.github.io/REPO/repo.json. Публичный отпечаток ключа
-следует опубликовать для пользователей отдельно от самого каталога.
+**https://github.com/Senkai350/animex-extensions/releases/latest/download/repo.json**
+
+Публичный репозиторий позволяет приложению скачивать пакеты без авторизации.
+Адрес каталога постоянный; адреса пакетов закреплены за конкретным выпуском.
+
+VPS может зеркалировать те же готовые пакеты каждые две минуты, без сборки.
+Для этого один раз замените старый Actions-based sync-скрипт на версию,
+читающую GitHub Releases. Оба каталога используют прежний публичный ключ.
+
+Подробности: [локальный выпуск](docs/releasing.md),
+[проверка и установка зеркала VPS](deploy/README.md).
 
 Для создания нового расширения используйте существующий модуль того же типа как
 пример, назначьте уникальный ID, задайте минимальные network/storage permissions,

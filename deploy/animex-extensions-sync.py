@@ -1,15 +1,13 @@
 #!/usr/bin/python3
-"""Verify a GitHub Actions catalog artifact before atomically publishing it."""
+"""Verify locally built GitHub Release assets before atomically publishing them."""
 import argparse
 import base64
 import copy
-import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import resource
 import shutil
 import stat
 import subprocess
@@ -43,7 +41,8 @@ def verify_signature(public_key, signature, payload):
         (root / 'public.der').write_bytes(bytes.fromhex('302a300506032b6570032100') + public_key)
         (root / 'signature').write_bytes(signature)
         (root / 'payload').write_bytes(payload)
-        result = subprocess.run(['/usr/bin/openssl', 'pkeyutl', '-verify', '-pubin', '-rawin',
+        openssl = os.environ.get('ANIMEX_OPENSSL', '/usr/bin/openssl')
+        result = subprocess.run([openssl, 'pkeyutl', '-verify', '-pubin', '-rawin',
                                  '-keyform', 'DER', '-inkey', str(root / 'public.der'),
                                  '-sigfile', str(root / 'signature'), '-in', str(root / 'payload')],
                                 capture_output=True, timeout=15)
@@ -94,10 +93,17 @@ def manifest_value(raw):
     for key in ('qualities', 'protocols', 'languages'):
         if raw.get(key):
             result[key] = raw[key]
+    if raw.get('dependencies'):
+        result['dependencies'] = [{key: dep[key] for key in ('id', 'requirement')}
+                                  for dep in raw['dependencies']]
+    if raw.get('app_compatibility') is not None:
+        result['app_compatibility'] = {key: raw['app_compatibility'][key]
+                                       for key in ('min_app_version', 'max_app_version')
+                                       if raw['app_compatibility'].get(key) is not None}
     return result
 
 
-def validate(directory, pinned):
+def validate(directory, pinned, *, base=BASE, index_url=None):
     files = {}
     total = 0
     for path in directory.iterdir():
@@ -112,7 +118,7 @@ def validate(directory, pinned):
     require({'repo.json', 'index.json'} <= files.keys(), 'missing catalog files')
     descriptor = parse(files['repo.json'].read_bytes())
     require(set(descriptor) == {'schema_version', 'id', 'name', 'index_url', 'public_key'}, 'descriptor fields')
-    require(descriptor['schema_version'] == 1 and descriptor['id'] == IDENTITY and descriptor['index_url'] == BASE + 'index.json', 'descriptor identity')
+    require(descriptor['schema_version'] == 1 and descriptor['id'] == IDENTITY and descriptor['index_url'] == (index_url or base + 'index.json'), 'descriptor identity')
     require(isinstance(descriptor['name'], str) and 0 < len(descriptor['name']) <= 200, 'descriptor name')
     require(decode(descriptor['public_key']) == decode(pinned), 'repository key does not match pin')
     index = parse(files['index.json'].read_bytes())
@@ -134,8 +140,8 @@ def validate(directory, pinned):
         module_id = manifest['id']
         require(isinstance(module_id, str) and re.fullmatch(r'[A-Za-z0-9._-]{1,160}', module_id) and '..' not in module_id and module_id not in ids, 'module id')
         ids.add(module_id)
-        require(isinstance(entry['url'], str) and entry['url'].startswith(BASE), 'module URL base')
-        filename = entry['url'][len(BASE):]
+        require(isinstance(entry['url'], str) and entry['url'].startswith(base), 'module URL base')
+        filename = entry['url'][len(base):]
         require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*\.anmx', filename) and filename not in expected, 'module URL filename')
         expected.add(filename)
         require(filename in files, 'missing module package')
@@ -166,10 +172,41 @@ def gh(*args):
 
 
 def download_limits():
+    import resource
     resource.setrlimit(resource.RLIMIT_FSIZE, (PACKAGE_MAX, PACKAGE_MAX))
 
 
+def release_assets(release):
+    """Accept a complete published local release, never drafts or partial uploads."""
+    require(not release['draft'] and not release['prerelease'] and release.get('published_at'), 'release is not published')
+    require(type(release['id']) is int and release['id'] > 0, 'release id')
+    require(re.fullmatch(r'extensions-[0-9]+-[0-9a-f]{12}', release['tag_name']), 'unexpected release tag')
+    names = set()
+    downloads = []
+    total = 0
+    for asset in release['assets']:
+        name = asset['name']
+        require(name not in names, 'duplicate release asset')
+        names.add(name)
+        package = re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*\.anmx', name)
+        require(package or name in ('repo.json', 'index.json', 'repo-vps.json', 'index-vps.json'), 'unexpected release asset')
+        limit = PACKAGE_MAX if package else INDEX_MAX
+        require(asset.get('state') == 'uploaded' and type(asset['size']) is int and 0 < asset['size'] <= limit, 'incomplete or oversized release asset')
+        total += asset['size']
+        require(total <= TOTAL_MAX, 'release total exceeds limit')
+        if package or name in ('repo-vps.json', 'index-vps.json'):
+            downloads.append(name)
+    require({'repo.json', 'index.json', 'repo-vps.json', 'index-vps.json'} <= names and len(names) > 4, 'missing release catalog or packages')
+    return downloads
+
+
+def check_forward(previous, incoming):
+    require(previous['revision'] <= incoming['revision'], 'refusing deployment rollback')
+    require(previous['revision'] != incoming['revision'] or previous['signature'] == incoming['signature'], 'conflicting catalog revision')
+
+
 def main():
+    import fcntl
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--public-key', required=True, help='pinned ed25519:<base64> public key (not a secret)')
     args = parser.parse_args()
@@ -177,27 +214,27 @@ def main():
     # Lock before network IO; systemd and manual invocations cannot overlap.
     with open('/run/animex-extensions-sync.lock', 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runs = gh('api', f'repos/{REPO}/actions/workflows/publish.yml/runs?branch=main&status=success&per_page=100')['workflow_runs']
-        candidates = [r for r in runs if r['event'] in ('push', 'workflow_dispatch') and r['head_branch'] == 'main' and r['conclusion'] == 'success' and r['repository']['full_name'] == REPO and r['head_repository']['full_name'] == REPO]
-        require(candidates, 'no successful eligible workflow runs')
-        run = max(candidates, key=lambda r: int(r['id']))
-        run_id = str(int(run['id']))
-        release = RELEASES / run_id
+        publication = gh('api', f'repos/{REPO}/releases/latest')
+        assets = release_assets(publication)
+        release_id = 'release-' + str(publication['id'])
+        release = RELEASES / release_id
         if LIVE.is_symlink() and LIVE.resolve() == release:
-            print(f'Already deployed run {run_id}')
+            print(f'Already deployed {release_id}')
             return
-        artifacts = gh('api', f'repos/{REPO}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
-        artifact = [a for a in artifacts if a['name'] == 'vps-extensions' and not a['expired']]
-        require(len(artifact) == 1 and 0 < artifact[0]['size_in_bytes'] <= TOTAL_MAX, 'missing, ambiguous or oversized artifact')
         with tempfile.TemporaryDirectory(prefix='animex-sync-') as temporary:
             incoming = Path(temporary)
-            subprocess.run(['/usr/bin/gh', 'run', 'download', run_id, '--repo', REPO, '--name', 'vps-extensions', '--dir', str(incoming)], check=True, timeout=240, preexec_fn=download_limits)
+            command = ['/usr/bin/gh', 'release', 'download', publication['tag_name'], '--repo', REPO, '--dir', str(incoming)]
+            for name in assets:
+                command.extend(['--pattern', name])
+            subprocess.run(command, check=True, timeout=240, preexec_fn=download_limits)
+            (incoming / 'repo-vps.json').rename(incoming / 'repo.json')
+            (incoming / 'index-vps.json').rename(incoming / 'index.json')
             index = validate(incoming, args.public_key)
             if LIVE.is_symlink():
                 current = LIVE.resolve()
-                require(current.parent == RELEASES and current.name.isdigit(), 'unexpected live symlink target')
+                require(current.parent == RELEASES and re.fullmatch(r'(?:release-)?[0-9]+', current.name), 'unexpected live symlink target')
                 previous = validate(current, args.public_key)
-                require(int(current.name) <= int(run_id) and previous['revision'] <= index['revision'], 'refusing deployment rollback')
+                check_forward(previous, index)
             else:
                 require(not LIVE.exists(), 'live path exists and is not a symlink')
             RELEASES.mkdir(parents=True, exist_ok=True)
@@ -216,7 +253,7 @@ def main():
                 finally:
                     if staging.exists():
                         shutil.rmtree(staging)
-            temporary_link = LIVE.parent / ('.extensions-' + run_id)
+            temporary_link = LIVE.parent / ('.extensions-' + release_id)
             require(not temporary_link.exists() and not temporary_link.is_symlink(), 'temporary link already exists')
             try:
                 temporary_link.symlink_to(release)
@@ -224,7 +261,7 @@ def main():
             finally:
                 if temporary_link.is_symlink():
                     temporary_link.unlink()
-            print(f'Deployed verified run {run_id}')
+            print(f'Deployed verified {release_id}')
 
 
 if __name__ == '__main__':

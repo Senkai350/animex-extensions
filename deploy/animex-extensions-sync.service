@@ -1,5 +1,5 @@
 [Unit]
-Description=Verify and publish AniMex extensions from GitHub Actions
+Description=Verify and mirror locally built AniMex GitHub Releases
 Wants=network-online.target
 After=network-online.target
 

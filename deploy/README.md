@@ -1,8 +1,19 @@
 # Verified VPS publication
 
-`animex-extensions-sync.py` uses root's existing `gh` authentication, selects the
-newest successful `publish.yml` run from `main` (push/workflow_dispatch only), and
-downloads its `vps-extensions` artifact. No token is stored in these files.
+`animex-extensions-sync.py` uses root's existing `gh` authentication to download
+locally built assets from the repository's Latest GitHub Release. Builds run on
+the developer computer with `pwsh -File scripts/release.ps1 -Publish`; GitHub
+Actions, paid runners and compilation on the VPS are not involved.
+
+Release assets include the direct GitHub `repo.json`/`index.json`, the VPS
+`repo-vps.json`/`index-vps.json`, and shared `.anmx` packages. The mirror downloads
+only the VPS catalogs and packages, renames the catalogs and verifies everything
+before switching the live directory. No token is stored in these files.
+
+Existing installations using Actions artifacts must replace the Python script
+and service file once using the installation commands below. Until then they
+continue serving the previous Actions publication. A missing or incomplete
+release leaves the current site untouched.
 
 The public key in the service is pinned from `repository-key.json`. Rotation is
 an explicit administrator action: change the unit's `--public-key` argument only
@@ -41,9 +52,9 @@ existing real directory is deliberately not replaced. nginx must serve
 auth and publishing rights; systemd makes host files read-only except the site,
 `/run` and private temporary storage.
 
-Each verified run becomes `extensions-releases/<run-id>`. A symlink rename
-publishes it atomically. Existing same-run publication is skipped. No old
-release is deleted. Forward deployments reject decreasing run IDs/revisions.
+Each verified release becomes `extensions-releases/release-<release-id>`. A symlink rename
+publishes it atomically. Existing same-release publication is skipped. No old
+release is deleted. Forward deployments reject decreasing or conflicting signed catalog revisions. Existing numeric Actions release directories remain valid during migration.
 
 ## Rollback
 
@@ -57,8 +68,8 @@ ln -s /var/www/senkai.fun/extensions-releases/PREVIOUS_RUN_ID /var/www/senkai.fu
 mv -Tf /var/www/senkai.fun/public/.extensions-rollback /var/www/senkai.fun/public/extensions
 ```
 
-Leave the timer stopped while investigating; restarting it restores the newest
-eligible successful run. Retention is manual; never remove the live target.
+Leave the timer stopped while investigating; restarting it restores the Latest
+eligible published release. Retention is manual; never remove the live target.
 
 ## Verification and operational boundaries
 
@@ -73,17 +84,20 @@ stdlib + system OpenSSL). Tests use real synthetic Ed25519 signatures and reject
 index signatures, signed foreign/traversal/query URLs, extra symlinks and invalid
 module signatures. No GitHub network calls or production deployment occur in tests.
 
-`gh run download` performs artifact extraction using the installed GitHub CLI;
+`gh release download` downloads individual release assets using the installed GitHub CLI;
 keep it current. The script restricts downloader file size/time and validates
-all extracted files before publication, but the aggregate 1 GiB limit is checked
-after extraction, not a filesystem quota. Use a bounded temporary filesystem
+all downloaded files before publication. The aggregate 1 GiB limit is checked
+before download from release metadata and again after download; it is not a filesystem quota. Use a bounded temporary filesystem
 if hostile workflow artifacts are part of the threat model. Downloaded packages
 are never extracted onto the site. Failure leaves the previous live symlink.
-API queries inspect the newest 100 successful workflow runs/artifacts; if none
-qualifies (or artifacts expired), deployment fails closed. GitHub/gh availability
+The latest-release API must return a complete, published local release with a valid
+`extensions-<time>-<commit>` tag; otherwise deployment fails closed. GitHub/gh availability
 and live nginx delivery require separate integration checks.
 
-## HTTPS prerequisite
+## Historical HTTPS setup notes
+
+The public HTTPS catalog was reachable on 2026-11-24. The following notes describe
+the initial setup; do not reconfigure a working server based on the old DNS diagnosis.
 
 At preparation time, `senkai.fun` DNS returns SERVFAIL; HTTP is configured but
 HTTPS certificate issuance is blocked. Repair authoritative DNS, set `A @` to
