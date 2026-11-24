@@ -1,0 +1,58 @@
+{
+  "anilibria": {
+    "url": "https://cdn.anilibria.top/static/favicon.ico?v=VYQs5Rs2SQ",
+    "file": "docs/icons/anilibria.ico",
+    "mime": "image/x-icon",
+    "sha256": "e5694ab290348d1a014d222148331f3b36fb994e9ebab357c428af465ff04c43"
+  },
+  "animego": {
+    "url": "https://animego.me/apple-touch-icon.png",
+    "file": "docs/icons/animego.png",
+    "mime": "image/png",
+    "sha256": "fec414e04831dda522c012919fb1205cb09af0e831d42efceb53283c3c054530"
+  },
+  "yummyani": {
+    "url": "https://old.yummyani.me/favicon.ico",
+    "file": "docs/icons/yummyani.ico",
+    "mime": "image/x-icon",
+    "sha256": "fe238206fe6f9ce647c2f5da9b9f473c644e8a948ba5779fa5c645669eedc84b"
+  },
+  "anilist": {
+    "url": "https://anilist.co/img/icons/android-chrome-192x192.png",
+    "file": "docs/icons/anilist.png",
+    "mime": "image/png",
+    "sha256": "ea00d67ef1bde31416b7bd02a7bac13f60546bb5bf8990173337be6b9ad58fa9"
+  },
+  "jikan": {
+    "url": "https://cdn.myanimelist.net/images/favicon.ico",
+    "file": "docs/icons/jikan.ico",
+    "mime": "image/x-icon",
+    "sha256": "192e6bb0ef8128f52087a7b642b90fea527908a63b47cbc3d1c927303232e542"
+  },
+  "shikimori": {
+    "url": "https://raw.githubusercontent.com/shikimori/shikimori/master/public/favicons/favicon-96x96.png",
+    "file": "docs/icons/shikimori.png",
+    "mime": "image/png",
+    "sha256": "36a859f2496631af7371f128340193fe23f7ee56205ceaee5e20df2cf9d29613"
+  },
+  "kodik": null,
+  "aksor": null,
+  "alloha": {
+    "url": "https://alloha.tv/images/favicon.ico",
+    "file": "docs/icons/alloha.png",
+    "mime": "image/png",
+    "sha256": "38e67e78301922fff8566b59729142fe5339d54a11ffd6a9c3c25d7adcd1d350"
+  },
+  "aniboom": {
+    "url": "https://aniboom.one/favicon.ico",
+    "file": "docs/icons/aniboom.ico",
+    "mime": "image/x-icon",
+    "sha256": "54ccde03e8702c9229fdad53830b1b8c49e3b337294b463329ba2147b1dbbbdc"
+  },
+  "cvh": {
+    "url": "https://cdnvideohub.com/icons/favicon.ico",
+    "file": "docs/icons/cvh.ico",
+    "mime": "image/x-icon",
+    "sha256": "d93da3d799c55e8c718bd27059f19a3b39ba17e99beba81c8d7513c8af00fd25"
+  }
+}

@@ -4,7 +4,8 @@ use std::{fs, process::Command};
 fn publisher_signs_packages_and_catalog_with_exact_manifest() {
     let temp = std::env::temp_dir().join(format!("anmx-publish-test-{}", std::process::id()));
     fs::create_dir_all(&temp).unwrap();
-    let manifest = serde_json::json!({"id":"org.test.source","kind":"source","name":"Test","version":"1.0.0","api_version":2,"author":{"name":"Tests","public_key":"placeholder"},"released_at":"2026-11-01T00:00:00Z","entry":"module.wasm","permissions":{"network":[],"storage":false},"dependencies":[{"id":"org.example.helper","requirement":"^1.2.0"}],"app_compatibility":{"min_app_version":">=0.1.0"}});
+    let icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1EAAAAASUVORK5CYII=";
+    let manifest = serde_json::json!({"id":"org.test.source","kind":"source","name":"Test","version":"1.0.0","api_version":2,"author":{"name":"Tests","public_key":"placeholder"},"released_at":"2026-11-01T00:00:00Z","entry":"module.wasm","permissions":{"network":[],"storage":false},"icon":icon,"dependencies":[{"id":"org.example.helper","requirement":"^1.2.0"}],"app_compatibility":{"min_app_version":">=0.1.0"}});
     fs::write(
         temp.join("module.json"),
         serde_json::to_vec(&manifest).unwrap(),
@@ -50,6 +51,7 @@ fn publisher_signs_packages_and_catalog_with_exact_manifest() {
     let actual: anm_manifest::Manifest =
         serde_json::from_reader(zip.by_name("module.json").unwrap()).unwrap();
     assert_eq!(actual, entry.manifest);
+    assert_eq!(actual.icon.as_deref(), Some(icon));
     assert_eq!(actual.dependencies.len(), 1);
     assert_eq!(actual.dependencies[0].id, "org.example.helper");
     assert!(actual.app_compatibility.is_some());

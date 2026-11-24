@@ -34,6 +34,7 @@ impl Manifest {
             path: path.to_string(),
             built_in: false,
             description: self.description.clone(),
+            icon: self.icon.clone(),
             qualities: self.qualities.clone(),
             protocols: self.protocols.clone(),
             languages: self.languages.clone(),

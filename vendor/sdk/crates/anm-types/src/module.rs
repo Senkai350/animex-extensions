@@ -53,6 +53,9 @@ pub struct ModuleMeta {
     pub built_in: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional base64 image Data URL (PNG, JPEG, WebP or ICO), at most 256 KiB decoded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     #[serde(default)]
     pub qualities: Vec<String>,
     #[serde(default)]

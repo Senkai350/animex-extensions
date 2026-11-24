@@ -1,6 +1,7 @@
 //! Manifest validation rules (plan §5.2).
 
 use anm_types::ModuleKind;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use crate::error::ManifestError;
 use crate::model::Manifest;
@@ -54,6 +55,30 @@ fn validate_unique(values: &[String], field: &str) -> Result<(), ManifestError> 
     Ok(())
 }
 
+/// Bound catalog and manifest growth; only inert raster image payloads are accepted.
+fn validate_icon(icon: &str) -> Result<(), ManifestError> {
+    let invalid = || ManifestError::InvalidField("icon must be a base64 PNG, JPEG, WebP or ICO Data URL (max 256 KiB)".into());
+    if icon.len() > 4 * (256_usize * 1024).div_ceil(3) + 64 {
+        return Err(invalid());
+    }
+    let (mime, encoded) = icon.split_once(";base64,").ok_or_else(invalid)?;
+    let bytes = STANDARD.decode(encoded).map_err(|_| invalid())?;
+    if bytes.is_empty() || bytes.len() > 256 * 1024 {
+        return Err(invalid());
+    }
+    let valid = match mime {
+        "data:image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "data:image/jpeg" => bytes.starts_with(b"\xff\xd8\xff"),
+        "data:image/webp" => bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"),
+        "data:image/x-icon" | "data:image/vnd.microsoft.icon" => bytes.starts_with(b"\x00\x00\x01\x00"),
+        _ => false,
+    };
+    if !valid {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 impl Manifest {
     pub fn parse(bytes: &[u8]) -> Result<Self, ManifestError> {
         Ok(serde_json::from_slice(bytes)?)
@@ -61,6 +86,9 @@ impl Manifest {
 
     /// Basic install-time validation (§5.2 items 1–5 plus ABI v2 fields).
     pub fn validate_basic(&self) -> Result<(), ManifestError> {
+        if let Some(icon) = &self.icon {
+            validate_icon(icon)?;
+        }
         if self.id.trim().is_empty() {
             return Err(ManifestError::EmptyId);
         }

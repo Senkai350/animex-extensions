@@ -33,6 +33,50 @@ fn sample() -> Manifest {
     Manifest::parse(SAMPLE_JSON.as_bytes()).expect("sample parses")
 }
 
+const ICON_PNG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1EAAAAASUVORK5CYII=";
+
+#[test]
+fn icon_is_optional_and_roundtrips_to_catalog_and_ipc() {
+    let mut m = sample();
+    assert!(m.icon.is_none());
+    assert!(serde_json::to_value(&m).unwrap().get("icon").is_none());
+    m.icon = Some(ICON_PNG.into());
+    m.validate_basic().unwrap();
+    let json = serde_json::to_vec(&m).unwrap();
+    assert_eq!(Manifest::parse(&json).unwrap().icon.as_deref(), Some(ICON_PNG));
+    let meta = m.to_meta(true, true, "", "");
+    assert_eq!(serde_json::to_value(meta).unwrap()["icon"], ICON_PNG);
+}
+
+#[test]
+fn icon_rejects_external_urls_invalid_base64_wrong_mime_and_oversize() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    for icon in [
+        "https://example.com/icon.png".to_string(),
+        "data:image/png;base64,%%%".into(),
+        "data:image/png;base64,".into(),
+        "data:image/svg+xml;base64,PHN2Zy8+".into(),
+        "data:image/png;base64,aGVsbG8=".into(),
+        format!("data:image/png;base64,{}", STANDARD.encode(vec![0; 256 * 1024 + 1])),
+    ] {
+        let mut m = sample();
+        m.icon = Some(icon);
+        assert!(m.validate_basic().is_err());
+    }
+}
+
+#[test]
+fn icon_is_covered_by_manifest_signature() {
+    let sk = signing_key();
+    let mut m = sample();
+    m.author.public_key = key_public_b64(&sk);
+    m.icon = Some(ICON_PNG.into());
+    m.signature = Some(m.sign_with(&sk, b"wasm"));
+    m.verify(b"wasm").unwrap();
+    m.icon = None;
+    assert!(m.verify(b"wasm").is_err());
+}
+
 fn signing_key() -> SigningKey {
     SigningKey::from_bytes(&[7u8; 32])
 }

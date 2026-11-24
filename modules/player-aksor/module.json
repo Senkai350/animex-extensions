@@ -2,7 +2,7 @@
   "id": "org.aksor.player",
   "kind": "player",
   "name": "Aksor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "api_version": 2,
   "author": {
     "name": "AniMex community",
@@ -23,5 +23,6 @@
   ],
   "languages": [
     "ru"
-  ]
+  ],
+  "icon": null
 }

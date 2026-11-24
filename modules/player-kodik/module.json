@@ -2,7 +2,7 @@
   "id": "org.kodik.player",
   "kind": "player",
   "name": "Kodik",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "api_version": 2,
   "author": {
     "name": "AniMex community",
@@ -28,5 +28,6 @@
   ],
   "languages": [
     "ru"
-  ]
+  ],
+  "icon": null
 }

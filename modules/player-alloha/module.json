@@ -2,7 +2,7 @@
   "id": "org.alloha.player",
   "kind": "player",
   "name": "Alloha",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "api_version": 2,
   "author": {
     "name": "AniMex community",
@@ -23,5 +23,6 @@
   ],
   "languages": [
     "ru"
-  ]
+  ],
+  "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACgklEQVQ4jXWTXUhUQRTHf7P3etd121YttVbTNDXXAqUyqUgqyhQhi3pMgshIiHoJwjDTkJAgyJQowsqSRJEeKox6KSqIyqSHDMUeDM2+1o8k13V379wednXXPgYOZzgz53/m/59zBLsbTyHEGRAaAkCAEABB/8c+dOYFagWlDTOAhhBkJ0XzYWgMTOp/AP4C8pqQuoaUrHLY6G0s49HpEnIdFtB9IPWAGUEvZSgm/SB1TSFjew2GgXtqivy0aHbkZXG4KIcVcVH09A/z0+0NVDSMgDHrAcNAIT0A4FNVbr3q5c2z1+RkJFK4PouKklzsGnT3DePxSeZWGJBC2rYaDAOciXD5CANehav1bXzq+0j+6jSK87MoL8pB907TMzCCHswNAIBC6pYaDCB+IRTngjMJo3QT74YmuVLXwq9RFwVrVrJro5P9W7NxjY7zfvD7HC1TSKiwJ1oj4VAh03eqqXfppO+p4sHTbpYviaG1ci/dF8tItgmQOqaQsmEA4SsiEt2agE9ocyGbqhMx9Q38PlSkHhQmDGByGtqeY+nq4VjJGk62HifGZmHk6w/ONtykuestfnsKmI0wACnB44XOl6gdLzhYkE11cwWJi+2MT0xSee4Gl9qf4LYshdhMMCkgJYINJwyEAE1FLLCwLzeVuvKdZCbH4Z720NTcQf31+4yLWIiKBUWd19LqLPdFmpmH5w+Q50zG7/dz7fZdapva+eyxgDUZFC2QNKtVsKWDFAQZDjvrspbRee8xVRda6HdJsCZAlBaoOEt13iwIBGuPzoDQhOEjxeZn8MsYWONBNYdd/teUBiZSwZEngc0glAmvAmYbCCX4M8zr+9AcGGDgBWp/A1uEBIt/1In+AAAAAElFTkSuQmCC"
 }

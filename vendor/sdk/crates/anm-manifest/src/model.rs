@@ -42,6 +42,9 @@ pub struct Manifest {
     pub permissions: ManifestPermissions,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional base64 image Data URL (PNG, JPEG, WebP or ICO), at most 256 KiB decoded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// Player capabilities, best-first. Rejected for sources.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub qualities: Vec<String>,
