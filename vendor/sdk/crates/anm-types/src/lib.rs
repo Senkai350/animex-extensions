@@ -19,7 +19,10 @@ pub use details::{
 pub use filters::{ChoicePresentation, FilterField, OptionPair};
 pub use history::HistoryEntry;
 pub use library::{Folder, FolderRole, FolderSummary, LibraryItem};
-pub use module::{ModuleAuthor, ModuleKind, ModuleMeta, ModulePermissions};
+pub use module::{
+    ModuleAppCompatibility, ModuleAuthor, ModuleDependency, ModuleKind, ModuleMeta,
+    ModulePermissions,
+};
 pub use player::{Dub, PlaybackCandidate, PlayerCandidate, PlayerCapabilities};
 pub use stream::{Header, PlaybackLink, Quality, StreamData, SubtitleTrack};
 pub use tracker::{

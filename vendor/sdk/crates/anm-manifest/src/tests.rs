@@ -244,3 +244,182 @@ fn manifest_author_and_permissions_are_exported_for_tooling() {
     assert!(author.public_key.starts_with("ed25519:"));
     assert!(!permissions.storage);
 }
+
+mod ranges_tests {
+    use crate::ranges::Requirement;
+    use semver::Version;
+
+    fn v(s: &str) -> Version {
+        Version::parse(s).unwrap()
+    }
+
+    #[test]
+    fn exact_versions() {
+        let req = Requirement::parse("1.2.3").unwrap();
+        assert!(req.matches(&v("1.2.3")));
+        assert!(!req.matches(&v("1.2.4")));
+        assert!(!req.matches(&v("1.3.0")));
+    }
+
+    #[test]
+    fn comparators() {
+        assert!(Requirement::parse(">=1.0.0").unwrap().matches(&v("1.0.0")));
+        assert!(Requirement::parse(">=1.0.0").unwrap().matches(&v("2.5.0")));
+        assert!(!Requirement::parse(">1.0.0").unwrap().matches(&v("1.0.0")));
+        assert!(Requirement::parse(">1.0.0").unwrap().matches(&v("1.0.1")));
+        assert!(Requirement::parse("<2.0.0").unwrap().matches(&v("1.9.9")));
+        assert!(!Requirement::parse("<2.0.0").unwrap().matches(&v("2.0.0")));
+        assert!(Requirement::parse("<=2.0.0").unwrap().matches(&v("2.0.0")));
+        assert!(Requirement::parse("=1.5.0").unwrap().matches(&v("1.5.0")));
+        assert!(!Requirement::parse("=1.5.0").unwrap().matches(&v("1.5.1")));
+    }
+
+    #[test]
+    fn combined_range() {
+        let req = Requirement::parse(">=1.0.0 <2.0.0").unwrap();
+        assert!(req.matches(&v("1.0.0")));
+        assert!(req.matches(&v("1.9.9")));
+        assert!(!req.matches(&v("2.0.0")));
+        assert!(!req.matches(&v("0.9.0")));
+    }
+
+    #[test]
+    fn star_matches_everything() {
+        let req = Requirement::parse("*").unwrap();
+        assert!(req.matches(&v("0.0.1")));
+        assert!(req.matches(&v("99.99.99")));
+    }
+
+    #[test]
+    fn caret_ranges() {
+        let req = Requirement::parse("^1.2.3").unwrap();
+        assert!(req.matches(&v("1.2.3")));
+        assert!(req.matches(&v("1.9.9")));
+        assert!(!req.matches(&v("2.0.0")));
+        assert!(!req.matches(&v("1.2.2")));
+
+        let zero = Requirement::parse("^0.2.3").unwrap();
+        assert!(zero.matches(&v("0.2.9")));
+        assert!(!zero.matches(&v("0.3.0")));
+
+        // npm: ^0.0.3 allows only 0.0.3 (pre-releases of it included).
+        let patch = Requirement::parse("^0.0.3").unwrap();
+        assert!(patch.matches(&v("0.0.3")));
+        assert!(!patch.matches(&v("0.0.4")));
+        assert!(!patch.matches(&v("0.1.0")));
+    }
+
+    #[test]
+    fn tilde_ranges() {
+        let req = Requirement::parse("~1.2.3").unwrap();
+        assert!(req.matches(&v("1.2.3")));
+        assert!(req.matches(&v("1.2.9")));
+        assert!(!req.matches(&v("1.3.0")));
+    }
+
+    #[test]
+    fn partials_and_wildcards() {
+        let req = Requirement::parse("1.2").unwrap();
+        assert!(req.matches(&v("1.2.0")));
+        assert!(req.matches(&v("1.2.9")));
+        assert!(!req.matches(&v("1.3.0")));
+
+        let req = Requirement::parse("1").unwrap();
+        assert!(req.matches(&v("1.0.0")));
+        assert!(req.matches(&v("1.9.9")));
+        assert!(!req.matches(&v("2.0.0")));
+
+        let req = Requirement::parse("1.x").unwrap();
+        assert!(req.matches(&v("1.5.0")));
+        assert!(!req.matches(&v("2.0.0")));
+
+        let req = Requirement::parse("1.2.*").unwrap();
+        assert!(req.matches(&v("1.2.7")));
+        assert!(!req.matches(&v("1.3.0")));
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        assert!(Requirement::parse("").is_err());
+        assert!(Requirement::parse("  ").is_err());
+        assert!(Requirement::parse("abc").is_err());
+        assert!(Requirement::parse("1.2.3.4").is_err());
+        assert!(Requirement::parse(">=1.0.0 || <0.5.0").is_err());
+        assert!(Requirement::parse(">=.5").is_err());
+    }
+
+    #[test]
+    fn keeps_raw_string() {
+        let req = Requirement::parse("  ^1.2.3  ").unwrap();
+        assert_eq!(req.as_str(), "^1.2.3");
+    }
+}
+
+mod manifest_new_fields_tests {
+    use crate::{Manifest, Requirement};
+
+    const BASE: &str = r#"{
+        "id": "org.test.player",
+        "kind": "player",
+        "name": "Test",
+        "version": "1.0.0",
+        "api_version": 2,
+        "author": {"name": "Tests", "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
+        "released_at": "2026-11-01T00:00:00Z",
+        "entry": "module.wasm",
+        "protocols": ["test.embed.v1"]
+    }"#;
+
+    #[test]
+    fn parses_dependencies_and_app_compatibility() {
+        let mut value: serde_json::Value = serde_json::from_str(BASE).unwrap();
+        value["dependencies"] = serde_json::json!([
+            {"id": "org.animego.source", "requirement": ">=0.1.5 <2.0.0"}
+        ]);
+        value["app_compatibility"] = serde_json::json!({
+            "min_app_version": ">=0.1.0",
+            "max_app_version": "<2.0.0"
+        });
+        let manifest: Manifest =
+            serde_json::from_value(value).expect("parses with new fields");
+        assert_eq!(manifest.dependencies.len(), 1);
+        assert_eq!(manifest.dependencies[0].id, "org.animego.source");
+        assert!(manifest.app_compatibility.is_some());
+        manifest.validate_basic().unwrap();
+
+        let requirement =
+            Requirement::parse(&manifest.dependencies[0].requirement).unwrap();
+        assert!(requirement.matches(&semver::Version::parse("0.1.7").unwrap()));
+        assert!(!requirement.matches(&semver::Version::parse("2.0.0").unwrap()));
+    }
+
+    #[test]
+    fn validates_dependency_requirements() {
+        let mut value: serde_json::Value = serde_json::from_str(BASE).unwrap();
+        value["dependencies"] = serde_json::json!([
+            {"id": "org.dep", "requirement": "not a version"}
+        ]);
+        let manifest: Manifest = serde_json::from_value(value).unwrap();
+        assert!(manifest.validate_basic().is_err());
+    }
+
+    #[test]
+    fn validates_app_compatibility_bounds() {
+        let mut value: serde_json::Value = serde_json::from_str(BASE).unwrap();
+        value["app_compatibility"] =
+            serde_json::json!({"min_app_version": "junk"});
+        let manifest: Manifest = serde_json::from_value(value).unwrap();
+        assert!(manifest.validate_basic().is_err());
+    }
+
+    #[test]
+    fn duplicate_dependency_rejected() {
+        let mut value: serde_json::Value = serde_json::from_str(BASE).unwrap();
+        value["dependencies"] = serde_json::json!([
+            {"id": "org.dep", "requirement": "^1.0.0"},
+            {"id": "org.dep", "requirement": "^2.0.0"}
+        ]);
+        let manifest: Manifest = serde_json::from_value(value).unwrap();
+        assert!(manifest.validate_basic().is_err());
+    }
+}

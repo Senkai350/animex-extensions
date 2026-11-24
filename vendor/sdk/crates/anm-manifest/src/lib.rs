@@ -8,12 +8,14 @@ mod canonical;
 mod error;
 mod meta;
 mod model;
+mod ranges;
 mod signature;
 mod validate;
 
 pub use canonical::canonical_json;
 pub use error::ManifestError;
-pub use model::{Manifest, ManifestAuthor, ManifestPermissions};
+pub use model::{AppCompatibility, Manifest, ManifestAuthor, ManifestDependency, ManifestPermissions};
+pub use ranges::Requirement;
 pub use signature::{decode_ed25519, encode_ed25519, ED25519_PREFIX};
 pub use validate::{
     valid_protocol_id, valid_quality_label, CURRENT_API_VERSION, MIN_SUPPORTED_API_VERSION,

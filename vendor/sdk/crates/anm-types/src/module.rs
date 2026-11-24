@@ -59,4 +59,27 @@ pub struct ModuleMeta {
     pub protocols: Vec<String>,
     #[serde(default)]
     pub languages: Vec<String>,
+    /// Extension dependencies as declared in the manifest (id + requirement).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<ModuleDependency>,
+    /// Host application version range this module supports, if declared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_compatibility: Option<ModuleAppCompatibility>,
+}
+
+/// IPC mirror of a manifest dependency entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleDependency {
+    pub id: String,
+    /// npm-style semver requirement (`>=1.2.0`, `^2.0.0`, `*`, ...).
+    pub requirement: String,
+}
+
+/// IPC mirror of the manifest host-application range.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleAppCompatibility {
+    pub min_app_version: Option<String>,
+    pub max_app_version: Option<String>,
 }

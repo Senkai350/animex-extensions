@@ -37,6 +37,20 @@ impl Manifest {
             qualities: self.qualities.clone(),
             protocols: self.protocols.clone(),
             languages: self.languages.clone(),
+            dependencies: self
+                .dependencies
+                .iter()
+                .map(|d| anm_types::ModuleDependency {
+                    id: d.id.clone(),
+                    requirement: d.requirement.clone(),
+                })
+                .collect(),
+            app_compatibility: self.app_compatibility.as_ref().map(|app| {
+                anm_types::ModuleAppCompatibility {
+                    min_app_version: app.min_app_version.clone(),
+                    max_app_version: app.max_app_version.clone(),
+                }
+            }),
         }
     }
 }

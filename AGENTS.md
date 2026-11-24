@@ -1,5 +1,21 @@
 # AniMex development instructions
 
+## Extension dependencies and app compatibility
+
+module.json может объявлять зависимости и диапазон совместимости с приложением:
+
+```json
+"dependencies": [{ "id": "org.example.helper", "requirement": ">=1.2.0 <2.0.0" }],
+"app_compatibility": { "min_app_version": ">=0.1.0", "max_app_version": "<2.0.0" }
+```
+
+`requirement` — npm-подобный semver-диапазон (`=`, `>=`, `>`, `<`, `<=`, точная
+версия, `*`, `^`, `~`, частичные `1.2`/`1` и `1.x`/`1.2.*`; `||` не поддерживается).
+Поля валидируются `anmx pack`. Хост показывает зависимости в диалоге установки,
+проверяет диапазон при установке/активации версии и перечисляет обратные
+зависимости при удалении. Несколько версий одного расширения хранятся одновременно:
+активная — ровно одна, переключение через карточку «Версии расширения».
+
 ## Module data caching
 
 - Source and tracker metadata must use the application's shared output cache by

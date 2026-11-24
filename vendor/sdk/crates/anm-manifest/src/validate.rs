@@ -4,6 +4,7 @@ use anm_types::ModuleKind;
 
 use crate::error::ManifestError;
 use crate::model::Manifest;
+use crate::ranges::Requirement;
 
 /// Maximum ABI version this host understands.
 pub const CURRENT_API_VERSION: u32 = 2;
@@ -113,6 +114,43 @@ impl Manifest {
             }
         }
         validate_unique(&self.languages, "languages")?;
+
+        // Dependencies: valid extension ids plus parseable semver ranges.
+        let mut seen_deps = std::collections::HashSet::new();
+        for dependency in &self.dependencies {
+            if dependency.id.trim().is_empty() || dependency.id.len() > 160 {
+                return Err(ManifestError::InvalidField(format!(
+                    "invalid dependency id '{}' ",
+                    dependency.id
+                )));
+            }
+            if !seen_deps.insert(dependency.id.as_str()) {
+                return Err(ManifestError::InvalidField(format!(
+                    "duplicate dependency '{}' ",
+                    dependency.id
+                )));
+            }
+            Requirement::parse(&dependency.requirement).map_err(|e| {
+                ManifestError::InvalidField(format!(
+                    "dependency '{}': {e}",
+                    dependency.id
+                ))
+            })?;
+        }
+
+        // Host application compatibility: both bounds must parse when set.
+        if let Some(app) = &self.app_compatibility {
+            if let Some(min) = &app.min_app_version {
+                Requirement::parse(min).map_err(|e| {
+                    ManifestError::InvalidField(format!("min_app_version: {e}"))
+                })?;
+            }
+            if let Some(max) = &app.max_app_version {
+                Requirement::parse(max).map_err(|e| {
+                    ManifestError::InvalidField(format!("max_app_version: {e}"))
+                })?;
+            }
+        }
 
         Ok(())
     }
