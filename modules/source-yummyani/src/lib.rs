@@ -47,7 +47,7 @@ use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
-    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, LegacyRelease as Release,
+    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, Release,
     ReleaseRef, TimeSkip, TimeSkipType, TrackerData,
 };
 use exports::animex::module::catalog_sorting_api::Guest as SortingGuest;
@@ -569,6 +569,8 @@ fn map_release(item: &AnimeItem, requested_id: &str) -> Result<Release, String> 
     // No opaque sourceRef: the numeric id is enough for episodes and players,
     // and release metadata stays persistable in the host cache.
     Ok(Release {
+        studio_details: None, episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
+
         id: requested_id.to_string(),
         alternative_names: alternative_names(item, &title),
         tracker_data: tracker_data_of(item),
@@ -576,11 +578,7 @@ fn map_release(item: &AnimeItem, requested_id: &str) -> Result<Release, String> 
         banner_url: poster.clone(),
         poster,
         description: clean(item.description.clone()),
-        genres: item
-            .genres
-            .iter()
-            .filter_map(|genre| clean(genre.title.clone()))
-            .collect(),
+        genres: release_metadata::genres(item.genres.iter().filter_map(|genre| clean(genre.title.clone())).collect()),
         studios: item
             .studios
             .iter()
@@ -1157,7 +1155,7 @@ impl exports::animex::module::release_details_api::Guest for Component {
         let id = numeric_release_id(&reference.id)?;
         let body = fetch(&release_url_for(&base(), &id)?)?;
         let item: AnimeItem = decode(&body, "release")?;
-        let mut details = release_metadata::upgrade(map_release(&item, &id)?);
+        let mut details = map_release(&item, &id)?;
         details.genres = item.genres.iter().filter_map(|genre| Some(crate::animex::module::types::Genre {
             name: clean(genre.title.clone())?, id: genre.id.map(|id| id.to_string()),
             language: Some("ru".into()), url: None,
@@ -1165,6 +1163,7 @@ impl exports::animex::module::release_details_api::Guest for Component {
         details.age_rating = item.min_age.as_ref().and_then(|age| age.title_long.as_deref())
             .and_then(release_metadata::age_rating);
         details.score_scale = details.rating.map(|_| 10);
+        details.studio_details = release_metadata::studios(&details.studios);
         Ok(details)
     }
 }

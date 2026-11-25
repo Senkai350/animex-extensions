@@ -8,9 +8,9 @@ use crate::model::Manifest;
 use crate::ranges::Requirement;
 
 /// Maximum ABI version this host understands.
-pub const CURRENT_API_VERSION: u32 = 2;
+pub const CURRENT_API_VERSION: u32 = 3;
 /// Old ABI versions are rejected: WIT 0.2 is a breaking contract change.
-pub const MIN_SUPPORTED_API_VERSION: u32 = 2;
+pub const MIN_SUPPORTED_API_VERSION: u32 = 3;
 
 /// `protocol-id`: lowercase, 3..=64 chars, `[a-z0-9._-]`, starts alphanumeric.
 pub fn valid_protocol_id(value: &str) -> bool {

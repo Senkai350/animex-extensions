@@ -2,8 +2,8 @@
   "id": "org.aniboom.player",
   "kind": "player",
   "name": "AniBoom",
-  "version": "0.2.1",
-  "api_version": 2,
+  "version": "0.2.2",
+  "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",

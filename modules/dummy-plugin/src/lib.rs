@@ -5,7 +5,7 @@ wit_bindgen::generate!({
 
 use animex::module::types::{
     AiringStatus, AnimePreview, CatalogPage, CatalogParams, EpisodeRef, PageMeta, PlayerCandidate,
-    LegacyRelease as Release, ReleaseRef, TrackerData,
+    Release, ReleaseRef, TrackerData,
 };
 use exports::animex::module::source_api::Guest;
 
@@ -40,6 +40,8 @@ impl Guest for Component {
 
     fn get_release(release: ReleaseRef) -> Result<Release, String> {
         Ok(Release {
+        studio_details: None, episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
+
             id: release.id.clone(),
             name: format!("Dummy {}", release.id),
             alternative_names: vec![],
@@ -48,7 +50,7 @@ impl Guest for Component {
             banner_url: None,
             poster: None,
             description: Some("dummy".into()),
-            genres: vec!["Test".into()],
+            genres: vec![animex::module::types::Genre { name: "Test".into(), id: None, language: None, url: None }],
             studios: vec![],
             status: AiringStatus::Ongoing,
             kind: Some("TV".into()),

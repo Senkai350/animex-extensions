@@ -2,8 +2,8 @@
   "id": "org.animego.source",
   "kind": "source",
   "name": "AnimeGO",
-  "version": "0.1.9",
-  "api_version": 2,
+  "version": "0.1.10",
+  "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",

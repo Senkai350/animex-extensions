@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
     FilterField, FilterMultiselect, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate,
-    LegacyRelease as Release, ReleaseRef, TimeSkip, TimeSkipType, TrackerData,
+    Release, ReleaseRef, TimeSkip, TimeSkipType, TrackerData,
 };
 use anm_sdk::protocol::anilibria_hls;
 use exports::animex::module::source_api::Guest;
@@ -423,7 +423,7 @@ impl exports::animex::module::release_details_api::Guest for Component {
     fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
 
         let raw: RawRelease = anm_sdk::get_json(&release_url(&reference.id)?)?;
-        let mut details = release_metadata::upgrade(map_release(&raw, &reference.id));
+        let mut details = map_release(&raw, &reference.id);
         details.genres = raw.genres.iter().filter_map(|genre| {
             let name = genre.name.as_deref()?.trim();
             if name.is_empty() { return None; }
@@ -441,6 +441,7 @@ impl exports::animex::module::release_details_api::Guest for Component {
         details.score_scale = details.rating.map(|_| 10);
         details.url = raw.alias.as_deref().filter(|slug| !slug.is_empty() && slug.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
             .map(|slug| format!("{SITE_BASE}/anime/releases/release/{slug}"));
+        details.studio_details = release_metadata::studios(&details.studios);
         Ok(details)
     }
 }
@@ -750,7 +751,7 @@ mod tests {
         assert_eq!(preview.alternative_names[0].name, release.alternative_names[0].name);
         assert_eq!(preview.alternative_names[1].language, release.alternative_names[1].language);
         assert_eq!(preview.genres, vec!["Фэнтези"]);
-        assert_eq!(preview.genres, release.genres);
+        assert_eq!(preview.genres, release.genres.iter().map(|genre| genre.name.as_str()).collect::<Vec<_>>());
         assert_eq!(preview.description.as_deref(), Some("Описание"));
         assert_eq!(preview.description, release.description);
         let missing = super::preview_of(&RawRelease::default(), "empty");
@@ -894,6 +895,8 @@ fn map_release(raw: &RawRelease, requested_id: &str) -> Release {
     let preview = preview_of(raw, &release_id);
     let name = preview.title.clone();
     Release {
+        studio_details: None, episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
+
         id: release_id,
         name: name.clone(),
         alternative_names: alternative_names(raw, &name),
@@ -905,7 +908,7 @@ fn map_release(raw: &RawRelease, requested_id: &str) -> Release {
             .and_then(|cover| pick_banner(Some(cover))),
         poster: preview.poster.clone(),
         description: preview.description.clone(),
-        genres: preview.genres.clone(),
+        genres: release_metadata::genres(preview.genres.clone()),
         studios: Vec::new(),
         status: preview.status,
         kind: preview.kind.clone(),

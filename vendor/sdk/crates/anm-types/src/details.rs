@@ -173,6 +173,18 @@ pub enum OriginalSource {
     Unknown,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Studio {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, rename = "imageURL", skip_serializing_if = "Option::is_none")]
+    pub image_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
 /// Release details returned by `source-api.get-release` and
 /// `tracker-api.get-anime`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,6 +210,8 @@ pub struct Release {
     pub genres: Vec<Genre>,
     #[serde(default)]
     pub studios: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub studio_details: Option<Vec<Studio>>,
     #[serde(default)]
     pub status: AiringStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]

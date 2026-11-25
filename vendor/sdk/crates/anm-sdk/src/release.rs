@@ -5,37 +5,16 @@ macro_rules! release_metadata {
         mod release_metadata {
             use crate::animex::module::types as w;
 
-            pub fn upgrade(value: w::LegacyRelease) -> w::Release {
-                w::Release {
-                    id: value.id,
-                    name: value.name,
-                    alternative_names: value.alternative_names,
-                    tracker_data: value.tracker_data,
-                    other_info: value.other_info,
-                    banner_url: value.banner_url,
-                    poster: value.poster,
-                    description: value.description,
-                    genres: value.genres.into_iter().map(|name| w::Genre {
-                        name, id: None, language: None, url: None,
-                    }).collect(),
-                    studios: value.studios,
-                    status: value.status,
-                    kind: value.kind,
-                    year: value.year,
-                    trailer: value.trailer,
-                    total_episodes: value.total_episodes,
-                    next_episode_at: value.next_episode_at,
-                    rating: value.rating,
-                    source_ref: value.source_ref,
-                    episode_duration_seconds: None,
-                    aired_from: None,
-                    aired_to: None,
-                    regional_premieres: Vec::new(),
-                    age_rating: None,
-                    original_source: None,
-                    score_scale: None,
-                    url: None,
-                }
+            #[allow(dead_code)]
+            pub fn genres(names: Vec<String>) -> Vec<w::Genre> {
+                names.into_iter().map(|name| w::Genre { name, id: None, language: None, url: None }).collect()
+            }
+
+            #[allow(dead_code)]
+            pub fn studios(names: &[String]) -> Option<Vec<w::Studio>> {
+                (!names.is_empty()).then(|| names.iter().map(|name| w::Studio {
+                    name: Some(name.clone()), id: None, url: None, image_url: None,
+                }).collect())
             }
 
             #[allow(dead_code)]

@@ -28,7 +28,7 @@
 wit_bindgen::generate!({ path: "../../vendor/sdk/wit", world: "tracker-module-release-details" });
 
 use animex::module::types::{
-    AnimePreview, Character, RelatedTitle, LegacyRelease as Release, ReleaseRef, Screenshot, SimilarTitle,
+    AnimePreview, Character, RelatedTitle, Release, ReleaseRef, Screenshot, SimilarTitle,
     StaffMember, TitleStatistics, TrackerVideo,
 };
 use exports::animex::module::tracker_api::Guest;

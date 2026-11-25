@@ -20,7 +20,7 @@
 //! missing field instead of a wrong value.
 
 use crate::animex::module::types::{
-    AiringStatus, AlternativeName, AnimePreview, InfoBlock, MediaType, RelatedTitle, LegacyRelease as Release,
+    AiringStatus, AlternativeName, AnimePreview, InfoBlock, MediaType, RelatedTitle, Release,
     TitleCard, TitleRelation,
 };
 use dom_query::{Document, Selection};
@@ -117,6 +117,18 @@ pub fn release(document: &Document, entry: &EntryRef) -> Release {
     push_list(&mut other_info, "Ссылки", external_links(document, 12));
 
     Release {
+        studio_details: {
+            let studios = label_links(document, &["Studios", "Studio"]);
+            (!studios.is_empty()).then(|| studios.into_iter().map(|(name, href)| {
+                let url = href.as_deref().and_then(absolute_url);
+                let id = url.as_deref().and_then(|url| url.split("/producer/").nth(1))
+                    .and_then(|tail| tail.split('/').next())
+                    .filter(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()))
+                    .map(str::to_owned);
+                crate::animex::module::types::Studio { name: Some(name), id, url, image_url: None }
+            }).collect())
+        }, episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
+
         id: entry.key(),
         name: name.clone(),
         alternative_names: alternative_names(document, &name),
@@ -125,7 +137,7 @@ pub fn release(document: &Document, entry: &EntryRef) -> Release {
         banner_url: None,
         poster: poster(document),
         description: description(document),
-        genres: genres(document),
+        genres: crate::release_metadata::genres(genres(document)),
         studios: label_links(document, &["Studios", "Studio"])
             .into_iter()
             .map(|(name, _)| name)
@@ -145,7 +157,7 @@ pub fn release(document: &Document, entry: &EntryRef) -> Release {
 /// Kept for callers that need a preview while a detail page is already cached.
 #[allow(dead_code)]
 pub fn extended_release(document: &Document, entry: &EntryRef) -> crate::animex::module::types::Release {
-    let mut result = crate::release_metadata::upgrade(release(document, entry));
+    let mut result = release(document, entry);
     if entry.manga {
         return result;
     }
@@ -612,7 +624,7 @@ mod tests {
         assert!(release.poster.as_deref().unwrap().ends_with(".jpg"));
         assert!(release.description.as_deref().unwrap().contains("ninja"));
         assert_eq!(
-            release.genres,
+            release.genres.iter().map(|genre| genre.name.as_str()).collect::<Vec<_>>(),
             vec!["Action", "Adventure", "Horror", "Martial Arts", "Shounen"]
         );
         assert_eq!(release.studios, vec!["Studio Pierrot"]);

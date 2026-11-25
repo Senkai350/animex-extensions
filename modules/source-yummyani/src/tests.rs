@@ -247,7 +247,7 @@ fn release_maps_real_fields_and_real_tracker_ids() {
         Some("2026-11-23T14:30:00Z")
     );
     assert_eq!(release.rating, Some(8.41));
-    assert_eq!(release.genres, vec!["Фэнтези", "Экшен"]);
+    assert_eq!(release.genres.iter().map(|genre| genre.name.as_str()).collect::<Vec<_>>(), vec!["Фэнтези", "Экшен"]);
     assert_eq!(release.studios, vec!["Atra"]);
     assert_eq!(
         release.poster.as_deref(),

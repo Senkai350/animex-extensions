@@ -12,7 +12,7 @@ const SAMPLE_JSON: &str = r#"{
     "kind": "source",
     "name": "AniLibria",
     "version": "1.0.0",
-    "api_version": 2,
+    "api_version": 3,
     "author": {
         "name": "AniMex",
         "contact": "https://github.com/example",
@@ -89,14 +89,14 @@ fn key_public_b64(sk: &SigningKey) -> String {
 fn parses_snake_case_manifest_and_v2_fields() {
     let m = sample();
     assert_eq!(m.id, "org.anilibria.source");
-    assert_eq!(m.api_version, 2);
+    assert_eq!(m.api_version, 3);
     assert_eq!(m.protocols, vec!["anilibria.hls.v1"]);
     assert_eq!(m.languages, vec!["ru"]);
     assert!(m.qualities.is_empty());
     assert_eq!(m.signature, None);
 
     let json = serde_json::to_string(&m).expect("serialize");
-    assert!(json.contains("\"api_version\":2"), "{json}");
+    assert!(json.contains("\"api_version\":3"), "{json}");
     assert!(json.contains("\"released_at\""), "{json}");
     assert!(!json.contains("apiVersion"), "{json}");
 }
@@ -109,7 +109,7 @@ fn canonical_is_stable_across_key_order() {
         "description": "Официальный источник AniLibria",
         "released_at": "2026-10-20T00:00:00Z",
         "entry": "module.wasm",
-        "api_version": 2,
+        "api_version": 3,
         "version": "1.0.0",
         "name": "AniLibria",
         "kind": "source",
@@ -124,7 +124,7 @@ fn canonical_is_stable_across_key_order() {
     let canonical = sample().canonical_unsigned();
     assert!(!canonical.contains("\": \""), "{canonical}");
     assert!(!canonical.contains('\n'), "{canonical}");
-    assert!(canonical.starts_with("{\"api_version\":2"), "{canonical}");
+    assert!(canonical.starts_with("{\"api_version\":3"), "{canonical}");
     assert!(!canonical.contains("signature"), "{canonical}");
 }
 
@@ -153,7 +153,7 @@ fn verify_accepts_legacy_hex() {
 
 #[test]
 fn rejects_old_and_future_api_versions() {
-    for version in [1, CURRENT_API_VERSION + 1] {
+    for version in [1, 2, CURRENT_API_VERSION + 1] {
         let mut m = sample();
         m.api_version = version;
         assert!(
@@ -273,7 +273,7 @@ fn to_meta_maps_new_fields_and_camelcase() {
     assert_eq!(meta.protocols, vec!["anilibria.hls.v1"]);
     assert_eq!(meta.languages, vec!["ru"]);
     let json = serde_json::to_string(&meta).expect("meta serializes");
-    assert!(json.contains("\"apiVersion\":2"), "{json}");
+    assert!(json.contains("\"apiVersion\":3"), "{json}");
     assert!(json.contains("\"qualities\""), "{json}");
 }
 
@@ -407,7 +407,7 @@ mod manifest_new_fields_tests {
         "kind": "player",
         "name": "Test",
         "version": "1.0.0",
-        "api_version": 2,
+        "api_version": 3,
         "author": {"name": "Tests", "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
         "released_at": "2026-11-01T00:00:00Z",
         "entry": "module.wasm",

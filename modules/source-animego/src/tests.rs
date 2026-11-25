@@ -306,7 +306,7 @@ fn release_page_maps_fields_and_other_info() {
     assert_eq!(release.year, Some(2026));
     assert_eq!(release.total_episodes, Some(12));
     assert_eq!(release.rating, Some(8.6));
-    assert_eq!(release.genres, vec!["Драма", "Фэнтези"]);
+    assert_eq!(release.genres.iter().map(|genre| genre.name.as_str()).collect::<Vec<_>>(), vec!["Драма", "Фэнтези"]);
     assert_eq!(release.studios, vec!["ZIG"]);
     assert!(release
         .other_info
@@ -498,7 +498,7 @@ fn fullmetal_alchemist_live_markup_preserves_release_metadata() {
         serde_json::from_str(release.source_ref.as_deref().unwrap()).unwrap();
     assert_eq!(payload["episodeDurationSeconds"], 1440);
     assert_eq!(
-        release.genres,
+        release.genres.iter().map(|genre| genre.name.as_str()).collect::<Vec<_>>(),
         vec!["Экшен", "Приключения", "Драма", "Фэнтези", "Сёнен"]
     );
     assert!(release.description.unwrap().contains("Эдвард"));

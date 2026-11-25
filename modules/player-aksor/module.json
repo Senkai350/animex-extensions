@@ -2,8 +2,8 @@
   "id": "org.aksor.player",
   "kind": "player",
   "name": "Aksor",
-  "version": "0.1.1",
-  "api_version": 2,
+  "version": "0.1.2",
+  "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",

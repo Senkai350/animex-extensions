@@ -10,7 +10,7 @@ wit_bindgen::generate!({
 });
 
 use animex::module::types::{
-    AiringStatus, AlternativeName, AnimePreview, Character, InfoBlock, MediaType, RelatedTitle, LegacyRelease as Release,
+    AiringStatus, AlternativeName, AnimePreview, Character, InfoBlock, MediaType, RelatedTitle, Release,
     ReleaseRef, ScoreCount, Screenshot, SimilarTitle, StaffMember, StaffRef, StatusCount,
     TitleCard, TitleRelation, TitleStatistics, TrackerData, TrackerEpisode, TrackerEpisodePage,
     TrackerVideo, VideoKind,
@@ -55,7 +55,7 @@ query Media($id: Int!, $useAniList: Boolean!, $useMal: Boolean!) {
     bannerImage
     trailer { id site thumbnail }
     nextAiringEpisode { id airingAt timeUntilAiring episode mediaId }
-    studios(isMain: true) { nodes { name } }
+    studios(isMain: true) { nodes { id name siteUrl } }
     tags { name }
     siteUrl
     relations { edges { relationType node {
@@ -98,7 +98,7 @@ query Media($id: Int!, $useAniList: Boolean!, $useMal: Boolean!) {
     bannerImage
     trailer { id site thumbnail }
     nextAiringEpisode { id airingAt timeUntilAiring episode mediaId }
-    studios(isMain: true) { nodes { name } }
+    studios(isMain: true) { nodes { id name siteUrl } }
     tags { name }
     siteUrl
     relations { edges { relationType node {
@@ -173,7 +173,7 @@ struct MediaNode {
 #[derive(Debug, Default, Deserialize, Clone)] #[serde(default, rename_all = "camelCase")] struct Cover { extra_large: Option<String>, large: Option<String>, medium: Option<String> }
 #[derive(Debug, Default, Deserialize, Clone)] #[serde(default, rename_all = "camelCase")] struct Trailer { id: Option<String>, site: Option<String>, thumbnail: Option<String> }
 #[derive(Debug, Default, Deserialize, Clone)] #[serde(default, rename_all = "camelCase")] struct Airing { id: i64, airing_at: i64, time_until_airing: i64, episode: i32, media_id: i64 }
-#[derive(Debug, Default, Deserialize, Clone)] #[serde(default)] struct Studio { name: String }
+#[derive(Debug, Default, Deserialize, Clone)] #[serde(default)] struct Studio { name: String, id: Option<i64>, #[serde(rename = "siteUrl")] site_url: Option<String> }
 #[derive(Debug, Default, Deserialize, Clone)] #[serde(default)] struct Tag { name: String }
 #[derive(Debug, Default, Deserialize, Clone)] #[serde(default, rename_all = "camelCase")] struct Connection<T> { nodes: Vec<T> }
 #[derive(Debug, Default, Deserialize, Clone)] #[serde(default, rename_all = "camelCase")] struct RelationConnection { edges: Vec<RelationEdge> }
@@ -296,7 +296,13 @@ fn preview(media: &MediaNode) -> AnimePreview {
     AnimePreview { id: media.id.to_string(), title: title.clone(), alternative_names: alternatives(&media.title, &title, &media.synonyms), genres: media.genres.clone(), description: media.description.clone(), poster: poster(media), year: year(&media.start_date, media.season_year), score: media.weighted_score.map(|v| v as f32 / 10.0), kind: format(media.format.as_deref()), status: status(media.status.as_deref()), episodes_count: media.episodes.and_then(|v| u32::try_from(v).ok()), tracker_data: tracker_data(media), source_ref: None }
 }
 fn release(media: &MediaNode) -> Release {
-    let p = preview(media); Release { id: media.id.to_string(), name: p.title.clone(), alternative_names: p.alternative_names.clone(), tracker_data: p.tracker_data.clone(), other_info: if media.tags.is_empty() { vec![] } else { vec![InfoBlock { title: "Теги".into(), data: media.tags.iter().map(|t| t.name.clone()).collect() }] }, banner_url: media.banner_image.clone(), poster: p.poster.clone(), description: media.description.clone(), genres: media.genres.clone(), studios: media.studios.as_ref().map(|s| s.nodes.iter().map(|v| v.name.clone()).collect()).unwrap_or_default(), status: p.status, kind: p.kind.clone(), year: p.year, trailer: media.trailer.as_ref().and_then(|t| trailer_url(t)), total_episodes: media.episodes.and_then(|v| u32::try_from(v).ok()), next_episode_at: media.next_airing_episode.as_ref().and_then(|a| chrono::DateTime::from_timestamp(a.airing_at, 0)).map(|d| d.to_rfc3339()), rating: media.weighted_score.map(|v| v as f32 / 10.0), source_ref: None }
+    let p = preview(media); Release {
+        studio_details: media.studios.as_ref().map(|studios| studios.nodes.iter().map(|studio|
+            crate::animex::module::types::Studio {
+                name: Some(studio.name.clone()), id: studio.id.map(|id| id.to_string()),
+                url: studio.site_url.clone(), image_url: None,
+            }).collect()), episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
+ id: media.id.to_string(), name: p.title.clone(), alternative_names: p.alternative_names.clone(), tracker_data: p.tracker_data.clone(), other_info: if media.tags.is_empty() { vec![] } else { vec![InfoBlock { title: "Теги".into(), data: media.tags.iter().map(|t| t.name.clone()).collect() }] }, banner_url: media.banner_image.clone(), poster: p.poster.clone(), description: media.description.clone(), genres: release_metadata::genres(media.genres.clone()), studios: media.studios.as_ref().map(|s| s.nodes.iter().map(|v| v.name.clone()).collect()).unwrap_or_default(), status: p.status, kind: p.kind.clone(), year: p.year, trailer: media.trailer.as_ref().and_then(|t| trailer_url(t)), total_episodes: media.episodes.and_then(|v| u32::try_from(v).ok()), next_episode_at: media.next_airing_episode.as_ref().and_then(|a| chrono::DateTime::from_timestamp(a.airing_at, 0)).map(|d| d.to_rfc3339()), rating: media.weighted_score.map(|v| v as f32 / 10.0), source_ref: None }
 }
 fn trailer_url(t: &Trailer) -> Option<String> { let id = t.id.as_deref()?; match t.site.as_deref().unwrap_or_default().to_ascii_lowercase().as_str() { "youtube" => Some(format!("https://www.youtube.com/watch?v={id}")), "dailymotion" => Some(format!("https://www.dailymotion.com/video/{id}")), _ => Some(format!("https://{}/{}", t.site.as_deref().unwrap_or("anilist.co"), id)) } }
 fn image(image: Option<&ImageNode>) -> Option<String> { image.and_then(|v| v.large.clone().or_else(|| v.medium.clone())) }
@@ -447,7 +453,7 @@ impl exports::animex::module::release_details_api::Guest for Component {
     fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
 
         let media = fetch(&reference.id)?;
-        let mut details = release_metadata::upgrade(release(&media));
+        let mut details = release(&media);
         details.episode_duration_seconds = media.duration.and_then(|n| u32::try_from(n).ok()).and_then(|n| n.checked_mul(60)).filter(|n| *n > 0);
         details.aired_from = media.start_date.year.and_then(|year| release_metadata::date(year, media.start_date.month, media.start_date.day));
         details.aired_to = media.end_date.year.and_then(|year| release_metadata::date(year, media.end_date.month, media.end_date.day));

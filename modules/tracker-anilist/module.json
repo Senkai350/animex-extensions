@@ -2,8 +2,8 @@
   "id": "org.anilist.tracker",
   "kind": "tracker",
   "name": "AniList",
-  "version": "1.0.10",
-  "api_version": 2,
+  "version": "1.0.11",
+  "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",

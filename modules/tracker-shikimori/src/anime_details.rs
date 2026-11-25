@@ -12,6 +12,7 @@ query AnimeDetails($id: String!) {
     releasedOn { year month day }
     poster { originalUrl previewUrl }
     genres { id name russian kind }
+    studios { id name imageUrl }
   }
 }
 "#;
@@ -107,7 +108,7 @@ pub(super) fn get(id: &str) -> Result<Release, String> {
 }
 
 fn map(node: DetailsNode) -> Release {
-    let mut details = release_metadata::upgrade(release(&node.anime));
+    let mut details = release(&node.anime);
     details.url = Some(absolutize(&node.url));
     details.aired_from = node.aired_on.as_ref().and_then(PartialDate::as_date);
     details.aired_to = node.released_on.as_ref().and_then(PartialDate::as_date);
@@ -138,6 +139,7 @@ mod tests {
             "url": "/animes/30911-tales-of-zestiria-the-cross",
             "score": 7.21, "rating": "pg_13", "duration": 23, "origin": "game",
             "airedOn": {"year": 2016, "month": 7, "day": 10},
+            "studios": [{"id": "43", "name": "ufotable", "imageUrl": "/system/studios/original/43.png"}],
             "genres": [{"id": "10", "name": "Fantasy", "russian": "Фэнтези", "kind": "genre"}]
         });
         let release = map(serde_json::from_value(raw).unwrap());
@@ -146,6 +148,11 @@ mod tests {
         assert_eq!(release.episode_duration_seconds, Some(1380));
         assert_eq!(release.genres[0].id.as_deref(), Some("10"));
         assert_eq!(release.alternative_names[0].language, "en");
+        let studios = release.studio_details.unwrap();
+        assert_eq!(studios[0].name.as_deref(), Some("ufotable"));
+        assert_eq!(studios[0].id.as_deref(), Some("43"));
+        assert_eq!(studios[0].url.as_deref(), Some("https://shikimori.io/animes/studio/43"));
+        assert_eq!(studios[0].image_url.as_deref(), Some("https://shikimori.io/system/studios/original/43.png"));
     }
 
     #[test]

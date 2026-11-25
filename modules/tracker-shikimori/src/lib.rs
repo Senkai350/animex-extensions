@@ -11,7 +11,7 @@ mod anime_details;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use animex::module::types::{
-    AiringStatus, AlternativeName, AnimePreview, Character, MediaType, RelatedTitle, LegacyRelease as Release,
+    AiringStatus, AlternativeName, AnimePreview, Character, MediaType, RelatedTitle, Release,
     ReleaseRef, ScoreCount, Screenshot, SimilarTitle, StaffMember, StatusCount,
     TitleCard, TitleRelation, TitleStatistics, TrackerData, TrackerVideo, VideoKind,
 };
@@ -66,7 +66,7 @@ query Anime($id: String!) {
     airedOn { year }
     poster { originalUrl previewUrl }
     genres { name russian }
-    studios { name }
+    studios { id name imageUrl }
     videos { id kind name url playerUrl imageUrl }
     screenshots { originalUrl x166Url x332Url }
     related {
@@ -241,8 +241,11 @@ struct Genre {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
+#[serde(rename_all = "camelCase")]
 struct Studio {
     name: String,
+    id: Option<String>,
+    image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -595,6 +598,16 @@ mod anime_kind_tests {
     }
 }
 
+fn studio_details(studio: &Studio) -> animex::module::types::Studio {
+    let id = studio.id.as_deref().filter(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()));
+    animex::module::types::Studio {
+        url: id.map(|id| format!("{SITE}/animes/studio/{id}")),
+        id: id.map(str::to_owned),
+        image_url: studio.image_url.as_deref().filter(|url| !url.trim().is_empty()).map(absolutize),
+        name: (!studio.name.trim().is_empty()).then(|| studio.name.clone()),
+    }
+}
+
 fn release(node: &AnimeNode) -> Release {
     let preview = preview(node);
     let name = node
@@ -605,6 +618,8 @@ fn release(node: &AnimeNode) -> Release {
         .unwrap_or(node.name.as_str())
         .to_string();
     Release {
+        studio_details: Some(node.studios.iter().map(studio_details).collect()), episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
+
         id: node.id.clone(),
         name: name.clone(),
         alternative_names: alternative_names(node, &name),
@@ -618,7 +633,7 @@ fn release(node: &AnimeNode) -> Release {
             .map(absolutize),
         poster: preview.poster.clone(),
         description: node.description.clone(),
-        genres: preview.genres.clone(),
+        genres: release_metadata::genres(preview.genres.clone()),
         studios: node
             .studios
             .iter()
@@ -1050,7 +1065,7 @@ mod release_tests {
         assert!(preview.alternative_names.iter().all(|name| !name.name.eq_ignore_ascii_case(&preview.title)));
         assert_eq!(preview.description, release.description);
         assert_eq!(preview.genres, vec!["Боевик"]);
-        assert_eq!(preview.genres, release.genres);
+        assert_eq!(preview.genres, release.genres.iter().map(|genre| genre.name.as_str()).collect::<Vec<_>>());
         assert_eq!(release.id, "20");
         assert_eq!(release.name, "Наруто");
         assert!(release

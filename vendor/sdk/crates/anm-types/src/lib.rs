@@ -14,7 +14,7 @@ mod tracker;
 pub use catalog::{AiringStatus, AnimeKind, AnimePreview, CatalogPage, CatalogParams, PageMeta};
 pub use details::{
     AgeRating, AlternativeName, CalendarDate, Episode, EpisodeRef, Genre, InfoBlock, OriginalSource,
-    RegionalPremiere, Release, ReleaseRef, TimeSkip, TimeSkipType,
+    RegionalPremiere, Release, ReleaseRef, Studio, TimeSkip, TimeSkipType,
     TrackerData,
 };
 pub use filters::{ChoicePresentation, FilterField, OptionPair};

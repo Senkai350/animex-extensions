@@ -5,7 +5,7 @@ fn publisher_signs_packages_and_catalog_with_exact_manifest() {
     let temp = std::env::temp_dir().join(format!("anmx-publish-test-{}", std::process::id()));
     fs::create_dir_all(&temp).unwrap();
     let icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1EAAAAASUVORK5CYII=";
-    let manifest = serde_json::json!({"id":"org.test.source","kind":"source","name":"Test","version":"1.0.0","api_version":2,"author":{"name":"Tests","public_key":"placeholder"},"released_at":"2026-11-01T00:00:00Z","entry":"module.wasm","permissions":{"network":[],"storage":false},"icon":icon,"dependencies":[{"id":"org.example.helper","requirement":"^1.2.0"}],"app_compatibility":{"min_app_version":">=0.1.0"}});
+    let manifest = serde_json::json!({"id":"org.test.source","kind":"source","name":"Test","version":"1.0.0","api_version":3,"author":{"name":"Tests","public_key":"placeholder"},"released_at":"2026-11-01T00:00:00Z","entry":"module.wasm","permissions":{"network":[],"storage":false},"icon":icon,"dependencies":[{"id":"org.example.helper","requirement":"^1.2.0"}],"app_compatibility":{"min_app_version":">=0.1.0"}});
     fs::write(
         temp.join("module.json"),
         serde_json::to_vec(&manifest).unwrap(),

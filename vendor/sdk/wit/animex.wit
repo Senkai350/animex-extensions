@@ -1,8 +1,8 @@
-package animex:module@0.2.0;
+package animex:module@0.3.0;
 
 /// Общие типы всех модулей. Единственный источник истины ABI.
 ///
-/// Протокол `0.2.0` разделяет метаданные релиза и воспроизведение:
+/// Протокол `0.3.0` разделяет метаданные релиза и воспроизведение:
 /// источник возвращает релиз и список кандидатов-плееров, а конкретный
 /// player-модуль сам отдаёт озвучки и ссылку. Связь между источником и
 /// плеером идёт по `protocol`, а не по id модуля.
@@ -125,33 +125,6 @@ interface types {
     data: list<string>,
   }
 
-  record legacy-release {
-    /// Stable source key used by routing, history and library.
-    id: string,
-    /// Main title as the source presents it (AniLibria: Russian title).
-    name: string,
-    alternative-names: list<alternative-name>,
-    tracker-data: list<tracker-data>,
-    other-info: list<info-block>,
-    banner-url: option<string>,
-    poster: option<string>,
-    description: option<string>,
-    genres: list<string>,
-    studios: list<string>,
-    status: airing-status,
-    /// Canonical kind is normalized by the host (`tv`, `movie`, ...).
-    kind: option<string>,
-    year: option<u16>,
-    trailer: option<string>,
-    total-episodes: option<u32>,
-    /// RFC3339 UTC timestamp.
-    next-episode-at: option<string>,
-    /// Rating relative to this source (not a third-party tracker).
-    rating: option<f32>,
-    /// Непрозрачные данные релиза для get-release / get-players.
-    source-ref: option<string>,
-  }
-
   record genre {
     name: string,
     id: option<string>,
@@ -173,6 +146,13 @@ interface types {
     light-novel, game, card-game, music, radio, book, picture-book, mixed-media, other, unknown,
   }
 
+  record studio {
+    url: option<string>,
+    id: option<string>,
+    image-url: option<string>,
+    name: option<string>,
+  }
+
   record release {
     /// Stable source key used by routing, history and library.
     id: string,
@@ -186,6 +166,7 @@ interface types {
     description: option<string>,
     genres: list<genre>,
     studios: list<string>,
+    studio-details: option<list<studio>>,
     status: airing-status,
     /// Canonical kind is normalized by the host (`tv`, `movie`, ...).
     kind: option<string>,
@@ -399,7 +380,7 @@ interface host {
 
 interface source-api {
   use types.{
-    legacy-release as release,
+    release,
     catalog-page,
     catalog-params,
     filter-field,
@@ -440,7 +421,7 @@ interface player-api {
 
 interface tracker-api {
   use types.{
-    legacy-release as release,
+    release,
     anime-preview,
     character,
     screenshot,

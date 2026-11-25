@@ -2,8 +2,8 @@
   "id": "org.cvh.player",
   "kind": "player",
   "name": "CVH",
-  "version": "0.1.3",
-  "api_version": 2,
+  "version": "0.1.4",
+  "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",

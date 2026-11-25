@@ -24,7 +24,7 @@ use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
-    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, LegacyRelease as Release,
+    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, Release,
     ReleaseRef, TrackerData,
 };
 use exports::animex::module::catalog_sorting_api::Guest as SortingGuest;
@@ -938,7 +938,7 @@ impl exports::animex::module::release_details_api::Guest for Component {
 
         let url = release_url(&reference.id)?;
         let body = fetch(&format!("animego:release:{}", reference.id), &url, false)?;
-        let mut details = release_metadata::upgrade(map_release(&body, &reference.id)?);
+        let mut details = map_release(&body, &reference.id)?;
         let document = document(&body);
         let structured = structured_release(&document);
         let field = |prefix: &str| details.other_info.iter()
@@ -961,6 +961,7 @@ impl exports::animex::module::release_details_api::Guest for Component {
                 .filter(|href| href.starts_with('/') && !href.starts_with("//"))
                 .map(|href| format!("{}{href}", base().trim_end_matches('/')));
         }
+        details.studio_details = release_metadata::studios(&details.studios);
         Ok(details)
     }
 }
@@ -1296,6 +1297,8 @@ fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
         });
 
     Ok(Release {
+        studio_details: None, episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
+
         id: requested_id.to_string(),
         name: title,
         alternative_names: alt_titles,
@@ -1304,7 +1307,7 @@ fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
         banner_url: banner,
         poster,
         description,
-        genres,
+        genres: release_metadata::genres(genres),
         studios: field_value("студия")
             .map(|value| vec![value])
             .unwrap_or_default(),

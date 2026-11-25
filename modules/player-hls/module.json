@@ -2,8 +2,8 @@
   "id": "org.anilibria.player.hls",
   "kind": "player",
   "name": "AniLibria HLS",
-  "version": "1.0.3",
-  "api_version": 2,
+  "version": "1.0.4",
+  "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",

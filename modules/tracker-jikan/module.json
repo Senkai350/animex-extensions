@@ -2,8 +2,8 @@
   "id": "org.myanimelist.tracker",
   "kind": "tracker",
   "name": "MyAnimeList",
-  "version": "2.1.4",
-  "api_version": 2,
+  "version": "2.1.5",
+  "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",
