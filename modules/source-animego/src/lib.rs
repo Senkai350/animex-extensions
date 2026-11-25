@@ -17,14 +17,14 @@
 
 wit_bindgen::generate!({
     path: "../../vendor/sdk/wit",
-    world: "source-module-catalog",
+    world: "source-module-release-details",
 });
 
 use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
-    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, Release,
+    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, LegacyRelease as Release,
     ReleaseRef, TrackerData,
 };
 use exports::animex::module::catalog_sorting_api::Guest as SortingGuest;
@@ -928,6 +928,40 @@ impl Guest for Component {
         }
         let content = fetch_content(&format!("{root}?episode={page}"))?;
         Ok(player_candidates(&content, &id, number))
+    }
+}
+
+anm_sdk::release_metadata!();
+
+impl exports::animex::module::release_details_api::Guest for Component {
+    fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
+
+        let url = release_url(&reference.id)?;
+        let body = fetch(&format!("animego:release:{}", reference.id), &url, false)?;
+        let mut details = release_metadata::upgrade(map_release(&body, &reference.id)?);
+        let document = document(&body);
+        let structured = structured_release(&document);
+        let field = |prefix: &str| details.other_info.iter()
+            .find(|block| block.title.to_lowercase().starts_with(prefix))
+            .and_then(|block| block.data.first()).map(String::as_str);
+        details.age_rating = field("возраст").or_else(|| field("рейтинг mpaa")).and_then(release_metadata::age_rating);
+        details.original_source = field("первоисточник").or_else(|| field("источник")).and_then(release_metadata::original_source);
+        details.episode_duration_seconds = field("длительность").and_then(release_metadata::duration_text)
+            .or_else(|| details.source_ref.as_deref().and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
+                .and_then(|value| value["episodeDurationSeconds"].as_u64()).and_then(|seconds| u32::try_from(seconds).ok()));
+        details.aired_from = structured["datePublished"].as_str().and_then(release_metadata::iso_date);
+        details.aired_to = structured["endDate"].as_str().and_then(release_metadata::iso_date);
+        details.score_scale = details.rating.map(|_| 10);
+        details.url = structured["url"].as_str().filter(|url| url.starts_with("https://")).map(str::to_owned).or(Some(url));
+        for genre in &mut details.genres {
+            genre.language = Some("ru".into());
+            genre.url = document.select("div.entity a[href*='/genre/'], div.entity a[href*='/genres/']")
+                .nodes().iter().find(|link| clean_text(&link.text()) == genre.name)
+                .and_then(|link| link.attr("href").map(|href| href.to_string()))
+                .filter(|href| href.starts_with('/') && !href.starts_with("//"))
+                .map(|href| format!("{}{href}", base().trim_end_matches('/')));
+        }
+        Ok(details)
     }
 }
 

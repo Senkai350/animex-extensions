@@ -25,10 +25,10 @@
 //! MAL pages are parsed directly, so Cloudflare/WAF interstitials are reported
 //! as errors with a cooldown instead of being cached as empty data.
 
-wit_bindgen::generate!({ path: "../../vendor/sdk/wit", world: "tracker-module-episodes-character-roles" });
+wit_bindgen::generate!({ path: "../../vendor/sdk/wit", world: "tracker-module-release-details" });
 
 use animex::module::types::{
-    AnimePreview, Character, RelatedTitle, Release, ReleaseRef, Screenshot, SimilarTitle,
+    AnimePreview, Character, RelatedTitle, LegacyRelease as Release, ReleaseRef, Screenshot, SimilarTitle,
     StaffMember, TitleStatistics, TrackerVideo,
 };
 use exports::animex::module::tracker_api::Guest;
@@ -238,6 +238,20 @@ impl exports::animex::module::statistics_api::Guest for Component {
                 }
             }
         }
+    }
+}
+
+anm_sdk::release_metadata!();
+
+impl exports::animex::module::release_details_api::Guest for Component {
+    fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
+
+        let entry = EntryRef::parse(&reference.id)?;
+        let document = detail_document(&entry)?;
+        if parse::anime::page_id(&document, entry.manga).is_some_and(|id| id != entry.id) {
+            return Err("MyAnimeList: title ID mismatch".into());
+        }
+        Ok(parse::anime::extended_release(&document, &entry))
     }
 }
 

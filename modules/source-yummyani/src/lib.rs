@@ -40,14 +40,14 @@
 
 wit_bindgen::generate!({
     path: "../../vendor/sdk/wit",
-    world: "source-module-catalog",
+    world: "source-module-release-details",
 });
 
 use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
-    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, Release,
+    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, LegacyRelease as Release,
     ReleaseRef, TimeSkip, TimeSkipType, TrackerData,
 };
 use exports::animex::module::catalog_sorting_api::Guest as SortingGuest;
@@ -224,6 +224,7 @@ impl Poster {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 struct Genre {
+    id: Option<u64>,
     title: Option<String>,
 }
 
@@ -1145,6 +1146,26 @@ impl Guest for Component {
             return Err(format!("yummyani: episode {number} has no videos"));
         }
         Ok(player_candidates(&scoped))
+    }
+}
+
+anm_sdk::release_metadata!();
+
+impl exports::animex::module::release_details_api::Guest for Component {
+    fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
+
+        let id = numeric_release_id(&reference.id)?;
+        let body = fetch(&release_url_for(&base(), &id)?)?;
+        let item: AnimeItem = decode(&body, "release")?;
+        let mut details = release_metadata::upgrade(map_release(&item, &id)?);
+        details.genres = item.genres.iter().filter_map(|genre| Some(crate::animex::module::types::Genre {
+            name: clean(genre.title.clone())?, id: genre.id.map(|id| id.to_string()),
+            language: Some("ru".into()), url: None,
+        })).collect();
+        details.age_rating = item.min_age.as_ref().and_then(|age| age.title_long.as_deref())
+            .and_then(release_metadata::age_rating);
+        details.score_scale = details.rating.map(|_| 10);
+        Ok(details)
     }
 }
 

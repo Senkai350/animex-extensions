@@ -5,7 +5,7 @@ wit_bindgen::generate!({
 
 use animex::module::types::{
     AiringStatus, AnimePreview, CatalogPage, CatalogParams, EpisodeRef, PageMeta, PlayerCandidate,
-    Release, ReleaseRef, TrackerData,
+    LegacyRelease as Release, ReleaseRef, TrackerData,
 };
 use exports::animex::module::source_api::Guest;
 

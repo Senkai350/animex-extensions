@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [switch]$Publish,
+    [string[]]$ModuleId = @(),
     [string]$SigningKeyFile = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.animex/signing-key.private')
 )
 $ErrorActionPreference = 'Stop'
@@ -23,6 +24,37 @@ function Assert-PublishSource {
     Invoke-Checked git @('fetch', 'origin', 'main')
     $remote = Invoke-Checked gh @('api', "repos/$repository/commits/main", '--jq', '.sha')
     if ($remote -cne $script:sourceCommit) { throw 'Push the source commit to main before publishing; HEAD must match GitHub main.' }
+}
+
+function Get-PreviousRelease {
+    $releases = @(Invoke-Checked gh @('api', "repos/$repository/releases?per_page=100") | ConvertFrom-Json)
+    $releases | Where-Object { -not $_.draft -and -not $_.prerelease } |
+        Sort-Object published_at -Descending | Select-Object -First 1
+}
+
+function Copy-PreviousPackages {
+    param($Release, $Index, [string[]]$Modules, [string[]]$Selected, [string]$Destination)
+    $packages = @(
+        foreach ($directory in $Modules) {
+            $manifest = Get-Content -Raw (Join-Path (Join-Path $root $directory) 'module.json') | ConvertFrom-Json
+            if ($manifest.id -cin $Selected) { continue }
+            $previous = $Index.modules | Where-Object { $_.manifest.id -ceq $manifest.id }
+            if (-not $previous -or $previous.manifest.version -cne $manifest.version) {
+                throw "Select $($manifest.id) for rebuilding because its published version differs or is missing."
+            }
+            & git diff --quiet $Release.target_commitish $script:sourceCommit -- $directory
+            if ($LASTEXITCODE -ne 0) { throw "Select $($manifest.id) for rebuilding because its files changed." }
+            [pscustomobject]@{ Name = "$($manifest.id)-$($manifest.version).anmx"; Hash = $previous.sha256 }
+        }
+    )
+    if (!$packages.Count) { return }
+    $download = @('release', 'download', $Release.tag_name, '--repo', $repository, '--dir', $Destination)
+    foreach ($package in $packages) { $download += @('--pattern', $package.Name) }
+    Invoke-Checked gh $download
+    foreach ($package in $packages) {
+        $actual = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Destination $package.Name)
+        if ($actual.Hash -ne $package.Hash) { throw "Published package hash mismatch: $($package.Name)" }
+    }
 }
 
 Push-Location $root
@@ -55,9 +87,24 @@ try {
     $vps = Join-Path $output 'vps'
     New-Item -ItemType Directory -Path $github, $vps | Out-Null
     Invoke-Checked cargo @('test', '--locked', '--manifest-path', $sdkManifest, '--workspace')
-    & (Join-Path $PSScriptRoot 'build.ps1') -Test -OutputDirectory $github
-    $packages = @(Get-ChildItem -LiteralPath $github -Filter '*.anmx' -File)
     $modules = @(Get-Content -Raw (Join-Path $root 'modules.json') | ConvertFrom-Json)
+    $latest = $null
+    $old = $null
+    if ($Publish) {
+        $latest = Get-PreviousRelease
+        if ($latest) {
+            $oldPath = Join-Path $output 'previous'
+            New-Item -ItemType Directory -Path $oldPath | Out-Null
+            Invoke-Checked gh @('release', 'download', $latest.tag_name, '--repo', $repository, '--pattern', 'index.json', '--dir', $oldPath)
+            $old = Get-Content -Raw (Join-Path $oldPath 'index.json') | ConvertFrom-Json
+        }
+    }
+    if ($ModuleId.Count -gt 0) {
+        if (-not $old) { throw 'A scoped release requires a previously published catalog.' }
+        Copy-PreviousPackages -Release $latest -Index $old -Modules $modules -Selected $ModuleId -Destination $github
+    }
+    & (Join-Path $PSScriptRoot 'build.ps1') -Test -ModuleId $ModuleId -OutputDirectory $github
+    $packages = @(Get-ChildItem -LiteralPath $github -Filter '*.anmx' -File)
     if ($packages.Count -ne $modules.Count) { throw 'Incomplete package set; publication stopped.' }
 
     # Package URLs are immutable per release; the descriptor keeps a stable index URL.
@@ -73,14 +120,7 @@ try {
     # Compare source before/after the build; never attach binaries to a different commit.
     if ($Publish) {
         Assert-PublishSource
-        $releases = @(Invoke-Checked gh @('api', "repos/$repository/releases?per_page=100") | ConvertFrom-Json)
-        $latest = $releases | Where-Object { -not $_.draft -and -not $_.prerelease } |
-            Sort-Object published_at -Descending | Select-Object -First 1
-        if ($latest) {
-            $oldPath = Join-Path $output 'previous'
-            New-Item -ItemType Directory -Path $oldPath | Out-Null
-            Invoke-Checked gh @('release', 'download', $latest.tag_name, '--repo', $repository, '--pattern', 'index.json', '--dir', $oldPath)
-            $old = Get-Content -Raw (Join-Path $oldPath 'index.json') | ConvertFrom-Json
+        if ($old) {
             if ($index.revision -le $old.revision) { throw 'Catalog revision must increase; check the system clock.' }
             foreach ($entry in $index.modules) {
                 $previous = $old.modules | Where-Object { $_.manifest.id -ceq $entry.manifest.id }

@@ -3,13 +3,15 @@
 
 wit_bindgen::generate!({
     path: "../../vendor/sdk/wit",
-    world: "tracker-module-character-roles",
+    world: "tracker-module-release-details-character-roles",
 });
+
+mod anime_details;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use animex::module::types::{
-    AiringStatus, AlternativeName, AnimePreview, Character, MediaType, RelatedTitle, Release,
+    AiringStatus, AlternativeName, AnimePreview, Character, MediaType, RelatedTitle, LegacyRelease as Release,
     ReleaseRef, ScoreCount, Screenshot, SimilarTitle, StaffMember, StatusCount,
     TitleCard, TitleRelation, TitleStatistics, TrackerData, TrackerVideo, VideoKind,
 };
@@ -922,6 +924,14 @@ impl exports::animex::module::similar_titles_api::Guest for Component {
                 }
             })
             .collect())
+    }
+}
+
+anm_sdk::release_metadata!();
+
+impl exports::animex::module::release_details_api::Guest for Component {
+    fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
+        anime_details::get(&reference.id)
     }
 }
 

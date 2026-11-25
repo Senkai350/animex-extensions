@@ -125,7 +125,7 @@ interface types {
     data: list<string>,
   }
 
-  record release {
+  record legacy-release {
     /// Stable source key used by routing, history and library.
     id: string,
     /// Main title as the source presents it (AniLibria: Russian title).
@@ -150,6 +150,62 @@ interface types {
     rating: option<f32>,
     /// Непрозрачные данные релиза для get-release / get-players.
     source-ref: option<string>,
+  }
+
+  record genre {
+    name: string,
+    id: option<string>,
+    language: option<string>,
+    url: option<string>,
+  }
+
+  /// Calendar dates may omit month and day, without introducing a timezone.
+  record calendar-date { year: u16, month: option<u8>, day: option<u8> }
+  /// ISO 3166-1 alpha-2 country code.
+  record regional-premiere { country: string, date: calendar-date }
+
+  enum age-rating {
+    none, g, pg, pg-13, r, r-plus, rx,
+    ru-0-plus, ru-6-plus, ru-12-plus, ru-16-plus, ru-18-plus,
+  }
+  enum original-source {
+    original, manga, web-manga, four-koma-manga, novel, web-novel, visual-novel,
+    light-novel, game, card-game, music, radio, book, picture-book, mixed-media, other, unknown,
+  }
+
+  record release {
+    /// Stable source key used by routing, history and library.
+    id: string,
+    /// Main title as the source presents it (AniLibria: Russian title).
+    name: string,
+    alternative-names: list<alternative-name>,
+    tracker-data: list<tracker-data>,
+    other-info: list<info-block>,
+    banner-url: option<string>,
+    poster: option<string>,
+    description: option<string>,
+    genres: list<genre>,
+    studios: list<string>,
+    status: airing-status,
+    /// Canonical kind is normalized by the host (`tv`, `movie`, ...).
+    kind: option<string>,
+    year: option<u16>,
+    trailer: option<string>,
+    total-episodes: option<u32>,
+    /// RFC3339 UTC timestamp.
+    next-episode-at: option<string>,
+    /// Rating relative to this source (not a third-party tracker).
+    rating: option<f32>,
+    /// Непрозрачные данные релиза для get-release / get-players.
+    source-ref: option<string>,
+    episode-duration-seconds: option<u32>,
+    aired-from: option<calendar-date>,
+    aired-to: option<calendar-date>,
+    regional-premieres: list<regional-premiere>,
+    age-rating: option<age-rating>,
+    original-source: option<original-source>,
+    score-scale: option<u8>,
+    url: option<string>,
   }
 
   record option-pair { value: string, label: string }
@@ -343,7 +399,7 @@ interface host {
 
 interface source-api {
   use types.{
-    release,
+    legacy-release as release,
     catalog-page,
     catalog-params,
     filter-field,
@@ -384,7 +440,7 @@ interface player-api {
 
 interface tracker-api {
   use types.{
-    release,
+    legacy-release as release,
     anime-preview,
     character,
     screenshot,
@@ -542,4 +598,24 @@ world tracker-module-character-roles {
 world tracker-module-episodes-character-roles {
   include tracker-module-episodes;
   export tracker-character-roles-api;
+}
+
+/// Optional, updated release contract for both sources and trackers.
+/// Legacy exports keep their original ABI for installed modules.
+interface release-details-api {
+  use types.{release, release-ref};
+  get-release-details: func(reference: release-ref) -> result<release, string>;
+}
+world release-details-reader { export release-details-api; }
+world source-module-release-details {
+  include source-module-catalog;
+  export release-details-api;
+}
+world tracker-module-release-details {
+  include tracker-module-episodes-character-roles;
+  export release-details-api;
+}
+world tracker-module-release-details-character-roles {
+  include tracker-module-character-roles;
+  export release-details-api;
 }

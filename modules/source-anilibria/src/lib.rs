@@ -7,7 +7,7 @@
 
 wit_bindgen::generate!({
     path: "../../vendor/sdk/wit",
-    world: "source-module-catalog",
+    world: "source-module-release-details",
 });
 
 use std::cmp::Ordering;
@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
     FilterField, FilterMultiselect, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate,
-    Release, ReleaseRef, TimeSkip, TimeSkipType, TrackerData,
+    LegacyRelease as Release, ReleaseRef, TimeSkip, TimeSkipType, TrackerData,
 };
 use anm_sdk::protocol::anilibria_hls;
 use exports::animex::module::source_api::Guest;
@@ -157,6 +157,7 @@ struct RawEpisode {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 struct RawRelease {
+    alias: Option<String>,
     id: Option<IdValue>,
     #[serde(rename = "type")]
     release_type: Option<LabeledValue>,
@@ -413,6 +414,34 @@ impl Guest for Component {
             Some(candidate) => Ok(vec![candidate]),
             None => Ok(Vec::new()),
         }
+    }
+}
+
+anm_sdk::release_metadata!();
+
+impl exports::animex::module::release_details_api::Guest for Component {
+    fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
+
+        let raw: RawRelease = anm_sdk::get_json(&release_url(&reference.id)?)?;
+        let mut details = release_metadata::upgrade(map_release(&raw, &reference.id));
+        details.genres = raw.genres.iter().filter_map(|genre| {
+            let name = genre.name.as_deref()?.trim();
+            if name.is_empty() { return None; }
+            Some(crate::animex::module::types::Genre {
+                name: name.to_owned(), id: genre.id.as_ref().map(IdValue::as_string),
+                language: Some("ru".into()), url: None,
+            })
+        }).collect();
+        let (sum, count) = raw.episodes.iter().filter_map(|ep| ep.duration)
+            .filter(|duration| duration.is_finite() && *duration > 0.0)
+            .fold((0_f64, 0_u32), |(sum, count), value| (sum + f64::from(value), count + 1));
+        details.episode_duration_seconds = (count > 0).then(|| (sum / f64::from(count)).round() as u32);
+        details.age_rating = raw.age_rating.as_ref().and_then(|rating| rating.label.as_deref())
+            .and_then(release_metadata::age_rating);
+        details.score_scale = details.rating.map(|_| 10);
+        details.url = raw.alias.as_deref().filter(|slug| !slug.is_empty() && slug.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+            .map(|slug| format!("{SITE_BASE}/anime/releases/release/{slug}"));
+        Ok(details)
     }
 }
 

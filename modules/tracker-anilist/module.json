@@ -2,7 +2,7 @@
   "id": "org.anilist.tracker",
   "kind": "tracker",
   "name": "AniList",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "api_version": 2,
   "author": {
     "name": "AniMex community",

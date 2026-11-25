@@ -9,6 +9,7 @@ pub mod bindings;
 mod cache;
 mod http;
 pub mod protocol;
+mod release;
 
 pub use bindings::animex::module::host;
 pub use cache::{cache_get, cache_set, data_cache_get, force_refresh};

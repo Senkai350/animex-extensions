@@ -6,11 +6,11 @@
 
 wit_bindgen::generate!({
     path: "../../vendor/sdk/wit",
-    world: "tracker-module-episodes-character-roles",
+    world: "tracker-module-release-details",
 });
 
 use animex::module::types::{
-    AiringStatus, AlternativeName, AnimePreview, Character, InfoBlock, MediaType, RelatedTitle, Release,
+    AiringStatus, AlternativeName, AnimePreview, Character, InfoBlock, MediaType, RelatedTitle, LegacyRelease as Release,
     ReleaseRef, ScoreCount, Screenshot, SimilarTitle, StaffMember, StaffRef, StatusCount,
     TitleCard, TitleRelation, TitleStatistics, TrackerData, TrackerEpisode, TrackerEpisodePage,
     TrackerVideo, VideoKind,
@@ -49,7 +49,7 @@ query Media($id: Int!, $useAniList: Boolean!, $useMal: Boolean!) {
     description(asHtml: true)
     startDate { year month day }
     endDate { year month day }
-    season seasonYear episodes duration genres synonyms
+    season seasonYear episodes duration genres synonyms source(version: 3)
     weightedScore meanScore popularity
     coverImage { extraLarge large medium }
     bannerImage
@@ -92,7 +92,7 @@ query Media($id: Int!, $useAniList: Boolean!, $useMal: Boolean!) {
     description(asHtml: true)
     startDate { year month day }
     endDate { year month day }
-    season seasonYear episodes duration genres synonyms
+    season seasonYear episodes duration genres synonyms source(version: 3)
     weightedScore meanScore popularity
     coverImage { extraLarge large medium }
     bannerImage
@@ -161,6 +161,7 @@ struct MediaNode {
     id: i64, id_mal: Option<i64>, #[serde(rename = "type")] media_type: Option<String>, format: Option<String>, status: Option<String>,
     title: TitleNode, description: Option<String>, start_date: FuzzyDate, end_date: FuzzyDate,
     season_year: Option<i32>, episodes: Option<i32>, duration: Option<i32>, genres: Vec<String>, synonyms: Vec<String>,
+    source: Option<String>,
     weighted_score: Option<i32>, mean_score: Option<i32>, popularity: Option<i32>, cover_image: Option<Cover>,
     banner_image: Option<String>, trailer: Option<Trailer>, next_airing_episode: Option<Airing>, studios: Option<Connection<Studio>>,
     tags: Vec<Tag>, site_url: Option<String>, relations: Option<RelationConnection>, characters: Option<CharacterConnection>,
@@ -437,6 +438,24 @@ mod tests {
             vec!["watching", "planned", "completed", "dropped", "on_hold", "rewatching", "FUTURE"]);
         assert_eq!(result.statuses[0].label, "Смотрю");
         assert_eq!(result.statuses.iter().map(|row| row.count).sum::<u32>(), 56);
+    }
+}
+
+anm_sdk::release_metadata!();
+
+impl exports::animex::module::release_details_api::Guest for Component {
+    fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
+
+        let media = fetch(&reference.id)?;
+        let mut details = release_metadata::upgrade(release(&media));
+        details.episode_duration_seconds = media.duration.and_then(|n| u32::try_from(n).ok()).and_then(|n| n.checked_mul(60)).filter(|n| *n > 0);
+        details.aired_from = media.start_date.year.and_then(|year| release_metadata::date(year, media.start_date.month, media.start_date.day));
+        details.aired_to = media.end_date.year.and_then(|year| release_metadata::date(year, media.end_date.month, media.end_date.day));
+        details.original_source = media.source.as_deref().and_then(release_metadata::original_source);
+        details.score_scale = details.rating.map(|_| 10);
+        details.url = media.site_url.or_else(|| Some(format!("{SITE}/anime/{}", media.id)));
+        for genre in &mut details.genres { genre.language = Some("en".into()); }
+        Ok(details)
     }
 }
 

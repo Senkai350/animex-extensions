@@ -20,7 +20,7 @@
 //! missing field instead of a wrong value.
 
 use crate::animex::module::types::{
-    AiringStatus, AlternativeName, AnimePreview, InfoBlock, MediaType, RelatedTitle, Release,
+    AiringStatus, AlternativeName, AnimePreview, InfoBlock, MediaType, RelatedTitle, LegacyRelease as Release,
     TitleCard, TitleRelation,
 };
 use dom_query::{Document, Selection};
@@ -144,6 +144,44 @@ pub fn release(document: &Document, entry: &EntryRef) -> Release {
 /// Search previews come from the search results page, not from a detail page.
 /// Kept for callers that need a preview while a detail page is already cached.
 #[allow(dead_code)]
+pub fn extended_release(document: &Document, entry: &EntryRef) -> crate::animex::module::types::Release {
+    let mut result = crate::release_metadata::upgrade(release(document, entry));
+    if entry.manga {
+        return result;
+    }
+    let aired = label_text(document, &["Aired"]).unwrap_or_default();
+    let (from, to) = aired.split_once(" to ").unwrap_or((&aired, ""));
+    result.aired_from = english_date(from);
+    result.aired_to = english_date(to);
+    result.episode_duration_seconds = label_text(document, &["Duration"])
+        .as_deref().and_then(crate::release_metadata::duration_text);
+    result.age_rating = label_text(document, &["Rating"]).as_deref()
+        .and_then(|value| crate::release_metadata::age_rating(value.split(" - ").next()?));
+    result.original_source = label_text(document, &["Source"]).as_deref()
+        .and_then(crate::release_metadata::original_source);
+    result.score_scale = result.rating.map(|_| 10);
+    result.url = absolute_url(&entry.path(None));
+    let links = label_links(document, &["Genres", "Genre"]);
+    for genre in &mut result.genres {
+        genre.language = Some("en".into());
+        if let Some(href) = links.iter().find(|(name, _)| name == &genre.name).and_then(|(_, href)| href.as_deref()) {
+            genre.url = absolute_url(href);
+            genre.id = href.split("/genre/").nth(1).and_then(|path| path.split('/').next())
+                .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).map(str::to_owned);
+        }
+    }
+    result
+}
+
+fn english_date(value: &str) -> Option<crate::animex::module::types::CalendarDate> {
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let parts: Vec<_> = value.split_whitespace().collect();
+    let year = parts.last()?.parse().ok()?;
+    let month = MONTHS.iter().position(|name| Some(*name) == parts.first().copied()).map(|i| i as i32 + 1);
+    let day = (parts.len() == 3).then(|| parts[1].trim_end_matches(',').parse().ok()).flatten();
+    crate::release_metadata::date(year, month, day)
+}
+
 pub fn preview_from_detail(document: &Document, entry: &EntryRef) -> AnimePreview {
     let name = title(document, entry);
     AnimePreview {
