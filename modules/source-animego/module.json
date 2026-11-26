@@ -2,7 +2,7 @@
   "id": "org.animego.source",
   "kind": "source",
   "name": "AnimeGO",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "api_version": 3,
   "author": {
     "name": "AniMex community",

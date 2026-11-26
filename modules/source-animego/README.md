@@ -1,7 +1,8 @@
 # AnimeGO source
 
-Bundled source `org.animego.source` (0.1.5). Build and package with
-`scripts/build-modules.ps1 -ModuleId org.animego.source`; startup installs it.
+Published source `org.animego.source`. Build and test without a signing key with
+`pwsh -File scripts/build.ps1 -Test -Unsigned -ModuleId org.animego.source`.
+See the [release guide](../../docs/releasing.md) for signed packages.
 
 Catalog IDs retain the canonical slug so navigation and history reopen valid
 release URLs. Episodes are read from paginated player menus; their opaque

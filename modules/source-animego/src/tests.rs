@@ -85,7 +85,7 @@ const ENTITY_HTML: &str = r#"
 
 #[test]
 fn cards_parse_from_listing_grid() {
-    let cards = parse_cards(CARD_HTML);
+    let cards = parse_cards(&document(CARD_HTML));
     assert_eq!(cards.len(), 1, "one card: {cards:?}");
     let card = &cards[0];
     assert_eq!(card.id, "3815");
@@ -107,7 +107,7 @@ fn cards_parse_scoped_list_and_grid_metadata() {
       <div class="ani-list__item-genres"><a href="/anime/genre/action">Action</a></div>
       <a href="/anime/season/2024">2024</a><a href="/anime/type/tv">TV</a>
     </div>"#;
-    let card = &parse_cards(list)[0];
+    let card = &parse_cards(&document(list))[0];
     assert_eq!(card.description.as_deref(), Some("A synopsis."));
     assert_eq!(card.genres, vec!["Action"]);
     assert_eq!(card.year, Some(2024));
@@ -122,7 +122,7 @@ fn cards_parse_scoped_list_and_grid_metadata() {
     let grid = r#"<div class="ani-grid__item"><a href="/anime/example-124" title="Example"></a>
       <div class="ani-grid__item-genres"><span class="ani-grid__item-genres__link">Фильм</span>
       <span class="ani-grid__item-genres__link">2023</span></div></div>"#;
-    let card = &parse_cards(grid)[0];
+    let card = &parse_cards(&document(grid))[0];
     assert_eq!(card.kind.as_deref(), Some("movie"));
     assert_eq!(card.year, Some(2023));
     assert!(card.description.is_none());
@@ -144,7 +144,7 @@ fn id_from_href_handles_plain_ids_and_rejects_gaps() {
 
 #[test]
 fn previews_stable_fields() {
-    let cards = parse_cards(CARD_HTML);
+    let cards = parse_cards(&document(CARD_HTML));
     let preview = preview_from_card(&cards[0]);
     assert_eq!(preview.id, "svad-ba-svetlyachkov-3815");
     assert_eq!(preview.title, "Свадьба светлячков");
@@ -205,7 +205,7 @@ fn voice_buttons_skip_broken_and_empty_labels() {
 
 #[test]
 fn episode_pages_extract_number_and_page_id() {
-    let pages = parse_episode_pages(EPISODE_PAGES_HTML);
+    let pages = parse_episode_pages(&document(EPISODE_PAGES_HTML));
     assert_eq!(
         pages,
         vec![
@@ -246,7 +246,7 @@ fn release_extracts_tracker_ids_from_reference_links() {
       <a href="//kinopoisk.ru/film/14669309"></a>
       <a href="//myanimelist.net/anime/63431"><span>7.36</span></a>
     </div>"#;
-    let release = map_release(&format!("{ENTITY_HTML}{refs}"), "3815").unwrap();
+    let (release, _) = map_release(&document(&format!("{ENTITY_HTML}{refs}")), "3815").unwrap();
     let values: Vec<_> = release.tracker_data.iter().map(|item| (item.name.as_str(), item.data.as_str())).collect();
     assert_eq!(values, vec![("Shikimori", "63431"), ("WorldArt", "12789"), ("Kinopoisk", "14669309"), ("MyAnimeList", "63431")]);
 }
@@ -270,7 +270,7 @@ fn tracker_links_accept_aliases_slugs_and_remove_duplicates() {
 
 #[test]
 fn tracker_links_ignore_invalid_ids_domains_and_unrelated_links() {
-    let document = dom_query::Document::from(r#"
+    let references = dom_query::Document::from(r#"
       <a href="https://myanimelist.net/anime/99">Outside reference block</a>
       <div class="content-ref-ids">
         <a href="https://myanimelist.net.evil.test/anime/20"></a>
@@ -284,13 +284,14 @@ fn tracker_links_ignore_invalid_ids_domains_and_unrelated_links() {
         <a href="https://kinopoisk.ru/name/123"></a>
         <a href="javascript:alert(1)"></a><a href="/anime/20"></a><a></a>
       </div>"#);
-    assert!(release_tracker_data(&document).is_empty());
-    assert!(map_release(ENTITY_HTML, "3815").unwrap().tracker_data.is_empty());
+    assert!(release_tracker_data(&references).is_empty());
+    let (release, _) = map_release(&document(ENTITY_HTML), "3815").unwrap();
+    assert!(release.tracker_data.is_empty());
 }
 
 #[test]
 fn release_page_maps_fields_and_other_info() {
-    let release = map_release(ENTITY_HTML, "3815").expect("release maps");
+    let (release, _) = map_release(&document(ENTITY_HTML), "3815").expect("release maps");
     assert_eq!(release.id, "3815");
     assert_eq!(release.name, "Свадьба светлячков");
     assert!(release
@@ -324,14 +325,14 @@ fn release_page_maps_fields_and_other_info() {
 
 #[test]
 fn release_missing_entity_is_an_error() {
-    assert!(map_release("<div>nothing</div>", "1").is_err());
+    assert!(map_release(&document("<div>nothing</div>"), "1").is_err());
 }
 
 // --- candidates -----------------------------------------------------------------
 
 #[test]
 fn player_candidates_rank_players_and_carry_payload() {
-    let candidates = player_candidates_for(TEST_BASE, VOICE_BUTTONS_HTML, "3815", 1);
+    let candidates = player_candidates_for(TEST_BASE, VOICE_BUTTONS_HTML, 1);
     assert_eq!(candidates.len(), 3);
     assert_eq!(candidates[0].protocol, "cvh.embed.v1");
     assert_eq!(candidates[1].protocol, "kodik.embed.v1");
@@ -404,7 +405,7 @@ fn source_ref_carries_animego_id() {
 
 #[test]
 fn canonical_release_ids_survive_navigation_without_opaque_payload() {
-    let preview = preview_from_card(&parse_cards(CARD_HTML)[0]);
+    let preview = preview_from_card(&parse_cards(&document(CARD_HTML))[0]);
     assert_eq!(numeric_release_id(&preview.id).unwrap(), "3815");
     assert_eq!(
         release_url_for(TEST_BASE, &preview.id).unwrap(),
@@ -416,7 +417,7 @@ fn canonical_release_ids_survive_navigation_without_opaque_payload() {
 fn provider_candidates_group_dubs_and_keep_cvh_integration_in_the_source() {
     let html = r#"<button data-player="//animego.me/cdn-iframe/52991/Dream%20Cast/2/3" data-provider-title="CVH" data-translation-title="Dream Cast" data-ptranslation="1"></button>
     <button data-player="//animego.me/cdn-iframe/52991/AnilibriaTV/2/3" data-provider-title="CVH" data-translation-title="AniLibria" data-ptranslation="2"></button>"#;
-    let candidates = player_candidates_for(TEST_BASE, html, "2430", 3);
+    let candidates = player_candidates_for(TEST_BASE, html, 3);
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].label.as_deref(), Some("CVH"));
     let payload: EmbedPayload = serde_json::from_str(&candidates[0].payload).unwrap();
@@ -431,15 +432,29 @@ fn provider_candidates_group_dubs_and_keep_cvh_integration_in_the_source() {
 #[test]
 fn list_layout_and_infinite_scroll_are_supported() {
     let html = CARD_HTML.replace("ani-grid__item", "ani-list__item");
-    assert_eq!(parse_cards(&html).len(), 1);
+    assert_eq!(parse_cards(&document(&html)).len(), 1);
     assert!(has_next_page(
-        r#"<div data-infinite-scroll-has-more-value="true"></div>"#,
+        &document(r#"<div data-infinite-scroll-has-more-value="true"></div>"#),
         1
     ));
     assert!(!has_next_page(
-        r#"<div data-infinite-scroll-has-more-value="false"></div>"#,
+        &document(r#"<div data-infinite-scroll-has-more-value="false"></div>"#),
         1
     ));
+}
+
+#[test]
+fn listing_page_keeps_card_identity_and_pagination() {
+    let html = format!(
+        r#"{CARD_HTML}{CARD_HTML}<ul class="pagination"><li><a href="/anime?page=2">2</a></li></ul>"#
+    );
+    let document = document(&html);
+    let page = listing_page(&document, 1);
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].id, "svad-ba-svetlyachkov-3815");
+    assert_eq!(page.meta.per_page, 1);
+    assert!(page.meta.has_next);
+    assert!(!listing_page(&document, u32::MAX).meta.has_next);
 }
 
 #[test]
@@ -482,7 +497,7 @@ fn ui_sort_selections_produce_distinct_site_requests() {
 #[test]
 fn fullmetal_alchemist_live_markup_preserves_release_metadata() {
     let html = include_str!("fixtures/fullmetal-alchemist.html");
-    let release = map_release(html, "stalnoy-alhimik-bratstvo-126").unwrap();
+    let (release, _) = map_release(&document(html), "stalnoy-alhimik-bratstvo-126").unwrap();
     assert_eq!(release.name, "Стальной алхимик: Братство");
     assert_eq!(release.kind.as_deref(), Some("tv"));
     assert_eq!(release.status, AiringStatus::Released);

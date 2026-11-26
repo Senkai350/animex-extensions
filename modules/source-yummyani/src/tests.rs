@@ -407,6 +407,29 @@ fn episodes_dedup_sort_numerically_and_carry_skips() {
     assert_eq!(ending, vec![(1400.0, 1419.0)]);
 }
 
+#[test]
+fn episode_metadata_keeps_the_first_reported_span_per_kind_and_rejects_overflow() {
+    let rows: Vec<VideoRow> = serde_json::from_value(serde_json::json!([
+        {"number": "2", "duration": 60, "skips": {"opening": {"time": u32::MAX, "length": 1}}},
+        {"number": 2, "duration": 90, "skips": {
+            "opening": {"time": 1, "length": 10},
+            "ending": {"time": 80, "length": 5}
+        }},
+        {"number": "2", "duration": 89, "skips": {"ending": {"time": 84, "length": 3}}},
+        {"number": "invalid", "duration": 120}
+    ]))
+    .unwrap();
+    let episodes = episodes_from_rows(&rows, "42");
+    assert_eq!(episodes.len(), 1);
+    assert_eq!(episodes[0].id, "42-2");
+    assert_eq!(episodes[0].duration, Some(90.0));
+    let [ending] = episodes[0].time_skips.as_slice() else {
+        panic!("expected only the first ending");
+    };
+    assert!(matches!(ending.kind, TimeSkipType::Ending));
+    assert_eq!((ending.start, ending.end), (80.0, 85.0));
+}
+
 // --- player routing --------------------------------------------------------------
 
 const CVH_ANILIBRIA: &str = "//ru.yummyani.me/iframeCVH.html?dubbing_code=AniLibria&anime_id=52991&episode=1&dubbing=%D0%9E%D0%B7%D0%B2%D1%83%D1%87%D0%BA%D0%B0";

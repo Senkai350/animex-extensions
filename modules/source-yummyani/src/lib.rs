@@ -43,6 +43,8 @@ wit_bindgen::generate!({
     world: "source-module-release-details",
 });
 
+use std::collections::BTreeMap;
+
 use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 
 use animex::module::types::{
@@ -613,65 +615,57 @@ fn map_release(item: &AnimeItem, requested_id: &str) -> Result<Release, String> 
 // Episodes and time skips from the videos list.
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
+struct EpisodeMetadata<'a> {
+    duration: Option<u64>,
+    opening: Option<&'a Span>,
+    ending: Option<&'a Span>,
+}
+
 fn episodes_from_rows(rows: &[VideoRow], release_id: &str) -> Vec<Episode> {
-    let mut numbers: Vec<u32> = rows.iter().filter_map(row_episode_number).collect();
-    numbers.sort_unstable();
-    numbers.dedup();
-    numbers
+    let mut episodes = BTreeMap::<u32, EpisodeMetadata<'_>>::new();
+    for row in rows {
+        let Some(number) = row_episode_number(row) else {
+            continue;
+        };
+        let metadata = episodes.entry(number).or_default();
+        metadata.duration = metadata.duration.max(row.duration.filter(|value| *value > 0));
+        if let Some(skips) = &row.skips {
+            // Preserve the first reported span for each kind, even if it is invalid.
+            metadata.opening = metadata.opening.or(skips.opening.as_ref());
+            metadata.ending = metadata.ending.or(skips.ending.as_ref());
+        }
+    }
+
+    episodes
         .into_iter()
-        .map(|number| Episode {
+        .map(|(number, metadata)| Episode {
             id: format!("{release_id}-{number}"),
             number,
             title: None,
             thumbnail: None,
-            duration: episode_duration(rows, number).map(|value| value as f32),
-            time_skips: episode_skips(rows, number),
+            duration: metadata.duration.map(|value| value as f32),
+            time_skips: [
+                (TimeSkipType::Opening, metadata.opening),
+                (TimeSkipType::Ending, metadata.ending),
+            ]
+            .into_iter()
+            .filter_map(|(kind, span)| time_skip(kind, span?))
+            .collect(),
             source_ref: None,
         })
         .collect()
 }
 
-fn episode_duration(rows: &[VideoRow], number: u32) -> Option<u64> {
-    rows.iter()
-        .filter(|row| row_episode_number(row) == Some(number))
-        .filter_map(|row| row.duration.filter(|value| *value > 0))
-        .max()
-}
-
-/// Opening/ending of the first row that reports them for this episode.
-fn episode_skips(rows: &[VideoRow], number: u32) -> Vec<TimeSkip> {
-    let scoped: Vec<&VideoRow> = rows
-        .iter()
-        .filter(|row| row_episode_number(row) == Some(number))
-        .collect();
-    let mut skips = Vec::new();
-    for (kind, span) in [
-        (
-            TimeSkipType::Opening,
-            scoped
-                .iter()
-                .find_map(|row| row.skips.as_ref().and_then(|skips| skips.opening.as_ref())),
-        ),
-        (
-            TimeSkipType::Ending,
-            scoped
-                .iter()
-                .find_map(|row| row.skips.as_ref().and_then(|skips| skips.ending.as_ref())),
-        ),
-    ] {
-        if let Some(span) = span {
-            if let (Some(time), Some(length)) = (span.time, span.length) {
-                if length > 0 {
-                    skips.push(TimeSkip {
-                        kind,
-                        start: time as f32,
-                        end: (time + length) as f32,
-                    });
-                }
-            }
-        }
-    }
-    skips
+fn time_skip(kind: TimeSkipType, span: &Span) -> Option<TimeSkip> {
+    let start = span.time?;
+    let length = span.length.filter(|length| *length > 0)?;
+    let end = start.checked_add(length)?;
+    Some(TimeSkip {
+        kind,
+        start: start as f32,
+        end: end as f32,
+    })
 }
 
 // ---------------------------------------------------------------------------
