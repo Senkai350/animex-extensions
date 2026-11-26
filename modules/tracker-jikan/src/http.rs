@@ -32,8 +32,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::html;
 
-const CACHE_VERSION: &str = "mal:v1";
-
 const SEARCH_NAMESPACE: &str = "mal:v1:search";
 const PACING_KEY: &str = "mal:v1:pace";
 const BREAKER_KEY: &str = "mal:v1:breaker";
@@ -75,6 +73,25 @@ struct CachedPage {
     #[serde(default)]
     last_modified: Option<String>,
     body: String,
+}
+
+impl CachedPage {
+    fn from_response(path: &str, body: String, headers: &[(String, String)], saved_at: u64) -> Self {
+        // Store the parser's slice directly so large pages fit the host cache
+        // and retain their validators for conditional requests.
+        let trimmed = html::trim_for(path, &body);
+        let body = if trimmed.len() < body.len() {
+            trimmed.to_owned()
+        } else {
+            body
+        };
+        Self {
+            saved_at,
+            etag: header_value(headers, "etag").map(str::to_owned),
+            last_modified: header_value(headers, "last-modified").map(str::to_owned),
+            body,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,7 +383,7 @@ fn request_headers(cached: Option<&CachedPage>) -> Vec<(String, String)> {
 /// with `/`. Forced metadata reads report network failures instead of stale success.
 pub fn get_page(cache_key: &str, path: &str, ttl_ms: u64) -> Result<String, String> {
     let now = now_ms();
-    let cached = cache_for_request(load_page(cache_key), anm_sdk::force_refresh());
+    let mut cached = cache_for_request(load_page(cache_key), anm_sdk::force_refresh());
     if cached
         .as_ref()
         .is_some_and(|page| page_fresh(page, now, ttl_ms))
@@ -422,21 +439,13 @@ pub fn get_page(cache_key: &str, path: &str, ttl_ms: u64) -> Result<String, Stri
                     warn(&last_error);
                     break;
                 }
-                save_page(
-                    cache_key,
-                    &CachedPage {
-                        saved_at: now_ms(),
-                        etag: header_value(&response.headers, "etag").map(str::to_string),
-                        last_modified: header_value(&response.headers, "last-modified")
-                            .map(str::to_string),
-                        body: body.clone(),
-                    },
-                );
+                let page = CachedPage::from_response(path, body, &response.headers, now_ms());
+                save_page(cache_key, &page);
                 clear_missing(cache_key);
-                return Ok(body);
+                return Ok(page.body);
             }
             304 => {
-                if let Some(mut page) = cached.clone() {
+                if let Some(mut page) = cached.take() {
                     page.saved_at = now_ms();
                     save_page(cache_key, &page);
                     return Ok(page.body);
@@ -510,31 +519,6 @@ pub fn get_page(cache_key: &str, path: &str, ttl_ms: u64) -> Result<String, Stri
     Err(last_error)
 }
 
-/// Result of a live smoke test, used by unit tests for header/status policy.
-#[allow(dead_code)]
-pub fn cache_namespace() -> &'static str {
-    CACHE_VERSION
-}
-
-/// Replace the cached body with the trimmed slice the parser actually needs.
-/// Character pages can approach the host's 4 MiB per-entry cache limit; storing
-/// the cast/staff slice keeps them cacheable and avoids re-downloading on every
-/// section call. The conditional headers are retained when a full page exists.
-pub fn cache_trimmed_body(cache_key: &str, body: &str) {
-    let mut page = load_page(cache_key).unwrap_or(CachedPage {
-        saved_at: now_ms(),
-        etag: None,
-        last_modified: None,
-        body: String::new(),
-    });
-    if page.body == body {
-        return;
-    }
-    page.body = body.to_string();
-    page.saved_at = now_ms();
-    save_page(cache_key, &page);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,6 +544,28 @@ mod tests {
         assert_eq!(retry_delay(503, 0, Some("60")), None);
         assert_eq!(retry_delay(404, 0, None), None);
         assert_eq!(retry_delay(503, 2, None), None);
+    }
+
+    #[test]
+    fn newly_cached_sections_keep_validators_with_only_the_parser_slice() {
+        let path = "/anime/20/_/characters";
+        let cast = r#"<div class="anime-character-container"><table>cast</table></div>"#;
+        let body = format!("<html>{cast}<h2>Reviews</h2><p>large unrelated section</p></html>");
+        let page = CachedPage::from_response(
+            path,
+            body,
+            &[
+                ("ETag".into(), "old-version".into()),
+                ("Last-Modified".into(), "yesterday".into()),
+            ],
+            1_000,
+        );
+        assert_eq!(page.body, cast);
+        assert_eq!(page.saved_at, 1_000);
+        assert_eq!(html::trim_for(path, &page.body), cast);
+        let headers = request_headers(Some(&page));
+        assert_eq!(header_value(&headers, "if-none-match"), Some("old-version"));
+        assert_eq!(header_value(&headers, "if-modified-since"), Some("yesterday"));
     }
 
     #[test]

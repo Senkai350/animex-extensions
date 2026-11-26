@@ -38,14 +38,11 @@ function global:gh {
     }
     if ($args[1] -eq 'download') {
         $destination = $args[[array]::IndexOf($args, '--dir') + 1]
-        if ($global:releaseScenario -eq 'same-version-unchanged') {
-            $current = Get-Content -Raw (Join-Path (Split-Path -Parent $destination) 'github/index.json') | ConvertFrom-Json
-            $current.revision -= 100
-            $current | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $destination 'index.json') -Encoding utf8NoBOM
-            return
-        }
+        $previousHash = if ($global:releaseScenario -eq 'same-version-unchanged') {
+            $global:releaseFixtureHash
+        } else { '0' * 64 }
         @{revision=([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + $(if ($global:releaseScenario -eq 'revision-conflict') { 3600 } else { -100 }));
-          modules=@(@{manifest=@{id='source.test';version=$(if ($global:releaseScenario -eq 'version-rollback') { '2.0.0' } else { '1.0.0' })};sha256=('0' * 64)})} |
+          modules=@(@{manifest=@{id='source.test';version=$(if ($global:releaseScenario -eq 'version-rollback') { '2.0.0' } else { '1.0.0' })};sha256=$previousHash})} |
             ConvertTo-Json -Depth 10 | Set-Content (Join-Path $destination 'index.json') -Encoding utf8NoBOM
     }
     if ($args[1] -eq 'create' -and $global:releaseScenario -eq 'failed-upload') {
@@ -68,7 +65,7 @@ param([switch]$Test, [string]$OutputDirectory)
 $root = Split-Path -Parent $PSScriptRoot
 $anmx = Join-Path $root ('vendor/sdk/target/debug/anmx' + $(if ($IsWindows) { '.exe' } else { '' }))
 $manifest = Join-Path $root 'fixture.json'
-@{id='source.test';kind='source';name='Test';version='1.0.0';api_version=2;
+@{id='source.test';kind='source';name='Test';version='1.0.0';api_version=3;
   author=@{name='Test';public_key='replaced by pack'};released_at='2026-11-24T00:00:00Z';entry='module.wasm'} |
     ConvertTo-Json | Set-Content $manifest -Encoding utf8NoBOM
 $wasm = Join-Path $root 'fixture.wasm'
@@ -76,6 +73,8 @@ $wasm = Join-Path $root 'fixture.wasm'
 & $anmx pack $manifest $wasm (Join-Path $OutputDirectory 'source.test-1.0.0.anmx')
 if ($LASTEXITCODE -ne 0) { throw 'Fixture signing failed' }
 '@ | Set-Content "$testRoot/scripts/build.ps1" -Encoding utf8NoBOM
+    & "$testRoot/scripts/build.ps1" -OutputDirectory $testRoot
+    $global:releaseFixtureHash = (Get-FileHash -Algorithm SHA256 "$testRoot/source.test-1.0.0.anmx").Hash.ToLowerInvariant()
     foreach ($scenario in @('success', 'dirty', 'unpublished-source', 'changed-during-build', 'failed-upload', 'wrong-key',
                             'same-version-unchanged', 'changed-without-version', 'version-rollback', 'revision-conflict')) {
         $global:releaseScenario = $scenario
@@ -88,7 +87,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Fixture signing failed' }
         try { & "$testRoot/scripts/release.ps1" -Publish }
         catch { $failed = $true; $failureMessage = $_.Exception.Message }
         $shouldSucceed = $scenario -in @('success', 'same-version-unchanged')
-        if ($failed -eq $shouldSucceed) { throw "Unexpected result: $scenario" }
+        if ($failed -eq $shouldSucceed) { throw "Unexpected result for ${scenario}: $failureMessage" }
         $expectedErrors = @{
             dirty='Commit all source changes*'; 'unpublished-source'='Push the source commit*';
             'changed-during-build'='Commit all source changes*'; 'failed-upload'='gh failed*';
@@ -112,6 +111,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Fixture signing failed' }
 } finally {
     [Environment]::SetEnvironmentVariable('ANMX_SIGNING_KEY', $originalKey, 'Process')
     Remove-Item Function:\git, Function:\cargo, Function:\gh
+    Remove-Variable -Name releaseFixtureHash -Scope Global -ErrorAction SilentlyContinue
     $resolvedTestRoot = [System.IO.Path]::GetFullPath($testRoot)
     $tempParent = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
     if ($resolvedTestRoot.StartsWith($tempParent) -and (Split-Path -Leaf $resolvedTestRoot) -like 'animex-release-test-*') {

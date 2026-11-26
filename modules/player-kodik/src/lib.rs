@@ -14,33 +14,17 @@ impl Guest for Component {
         })
     }
     fn get_dubs(payload: String) -> Result<Vec<Dub>, String> {
-        let payload = common::parse(&payload)?;
-        Ok(payload
-            .variants
-            .into_iter()
-            .enumerate()
-            .map(|(index, variant)| Dub {
-                id: variant.id,
-                name: variant.label,
-                language: variant.language,
-                qualities: vec![],
-                is_default: index == 0,
-            })
-            .collect())
+        common::dubs(&payload)
     }
     fn get_link(
         payload: String,
         dub_id: String,
-        _quality: Option<String>,
+        quality: Option<String>,
     ) -> Result<StreamData, String> {
         let payload = common::parse(&payload)?;
         let variant = common::selected(&payload, &dub_id)?;
 
-        resolve::resolve(
-            &variant.url,
-            payload.referer.as_deref(),
-            _quality.as_deref(),
-        )
+        resolve::resolve(&variant.url, payload.referer.as_deref(), quality.as_deref())
     }
 }
 export!(Component);

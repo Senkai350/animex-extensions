@@ -631,7 +631,7 @@ fn preview_of(raw: &RawRelease, id: &str) -> AnimePreview {
             AiringStatus::Released
         },
         episodes_count,
-        tracker_data: preview_tracker_data(raw),
+        tracker_data: tracker_data(raw),
         source_ref: None,
     }
 }
@@ -768,7 +768,7 @@ mod tests {
             hls_720: Some("https://cdn/720.m3u8".into()),
             ..Default::default()
         };
-        let payload = episode_payload(&raw, "e1").unwrap();
+        let payload = episode_payload(&raw, "e1").unwrap().unwrap();
         let parsed: anilibria_hls::Payload = serde_json::from_str(&payload).unwrap();
         assert_eq!(parsed.qualities.len(), 2);
         assert!(parsed.translations.is_empty());
@@ -777,6 +777,17 @@ mod tests {
 
         let candidate = player_candidate(&raw, "e1").unwrap().unwrap();
         assert_eq!(candidate.protocol, anilibria_hls::PROTOCOL);
+        assert_eq!(candidate.payload, payload);
+    }
+
+    #[test]
+    fn blank_renditions_do_not_produce_playback_payloads() {
+        let raw = RawEpisode {
+            hls_1080: Some(" ".into()),
+            ..Default::default()
+        };
+        assert!(episode_payload(&raw, "e1").unwrap().is_none());
+        assert!(player_candidate(&raw, "e1").unwrap().is_none());
     }
 
     #[test]
@@ -893,25 +904,24 @@ fn map_release(raw: &RawRelease, requested_id: &str) -> Release {
         .unwrap_or_else(|| requested_id.to_string());
 
     let preview = preview_of(raw, &release_id);
-    let name = preview.title.clone();
     Release {
         studio_details: None, episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
 
         id: release_id,
-        name: name.clone(),
-        alternative_names: alternative_names(raw, &name),
-        tracker_data: tracker_data(raw),
+        name: preview.title,
+        alternative_names: preview.alternative_names,
+        tracker_data: preview.tracker_data,
         other_info: other_info(raw),
         banner_url: raw
             .background_covers
             .first()
             .and_then(|cover| pick_banner(Some(cover))),
-        poster: preview.poster.clone(),
-        description: preview.description.clone(),
-        genres: release_metadata::genres(preview.genres.clone()),
+        poster: preview.poster,
+        description: preview.description,
+        genres: release_metadata::genres(preview.genres),
         studios: Vec::new(),
         status: preview.status,
-        kind: preview.kind.clone(),
+        kind: preview.kind,
         year: preview.year,
         trailer: None,
         total_episodes: raw.episodes_total.or_else(|| {
@@ -999,10 +1009,6 @@ fn detect_language(value: &str) -> &'static str {
     } else {
         "unknown"
     }
-}
-
-fn preview_tracker_data(raw: &RawRelease) -> Vec<TrackerData> {
-    tracker_data(raw)
 }
 
 fn tracker_data(raw: &RawRelease) -> Vec<TrackerData> {
@@ -1120,7 +1126,7 @@ fn map_episode(
         .ordinal
         .unwrap_or_else(|| (index as u32).saturating_add(1));
     let id = episode_id(raw, index, release_id);
-    let source_ref = episode_payload(raw, &id).ok();
+    let source_ref = episode_payload(raw, &id).ok().flatten();
 
     Episode {
         id,
@@ -1148,8 +1154,8 @@ fn episode_id(raw: &RawEpisode, index: usize, release_id: &str) -> String {
         .unwrap_or_else(|| format!("{release_id}-{number}"))
 }
 
-/// Available HLS renditions, best first, as `(label, url)`.
-fn episode_qualities(raw: &RawEpisode) -> Vec<(String, String)> {
+/// Available HLS renditions, best first.
+fn episode_qualities(raw: &RawEpisode) -> Vec<anilibria_hls::QualityRef> {
     [
         ("1080p", raw.hls_1080.as_deref()),
         ("720p", raw.hls_720.as_deref()),
@@ -1161,24 +1167,21 @@ fn episode_qualities(raw: &RawEpisode) -> Vec<(String, String)> {
         if url.is_empty() {
             None
         } else {
-            Some((label.to_string(), url.to_string()))
+            Some(anilibria_hls::QualityRef {
+                label: label.to_string(),
+                url: url.to_string(),
+            })
         }
     })
     .collect()
 }
 
 /// Build the protocol payload shared by `episode.source-ref` and
-/// `get-players`. An empty quality list means "no playable rendition".
-fn episode_payload(
-    raw: &RawEpisode,
-    episode_id: &str,
-) -> Result<String, String> {
-    let qualities = episode_qualities(raw)
-        .into_iter()
-        .map(|(label, url)| anilibria_hls::QualityRef { label, url })
-        .collect::<Vec<_>>();
+/// `get-players`. No payload is produced for episodes without HLS renditions.
+fn episode_payload(raw: &RawEpisode, episode_id: &str) -> Result<Option<String>, String> {
+    let qualities = episode_qualities(raw);
     if qualities.is_empty() {
-        return Err("episode has no HLS renditions".into());
+        return Ok(None);
     }
     anm_sdk::protocol::build_payload(&anilibria_hls::Payload {
         episode_id: episode_id.to_string(),
@@ -1186,18 +1189,16 @@ fn episode_payload(
         translations: Vec::new(),
         referer: Some(format!("{SITE_BASE}/")),
     })
+    .map(Some)
 }
 
 fn player_candidate(
     raw: &RawEpisode,
     episode_id: &str,
 ) -> Result<Option<PlayerCandidate>, String> {
-    if episode_qualities(raw).is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(PlayerCandidate {
+    Ok(episode_payload(raw, episode_id)?.map(|payload| PlayerCandidate {
         protocol: anilibria_hls::PROTOCOL.to_string(),
-        payload: episode_payload(raw, episode_id)?,
+        payload,
         label: Some("AniLibria".to_string()),
         priority: Some(0),
     }))

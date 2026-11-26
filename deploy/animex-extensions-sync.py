@@ -87,7 +87,7 @@ def manifest_value(raw):
         result['author']['contact'] = raw['author']['contact']
     permission = raw.get('permissions', {})
     result['permissions'] = {'network': permission.get('network', []), 'storage': permission.get('storage', False)}
-    for key in ('description', 'signature'):
+    for key in ('description', 'icon', 'signature'):
         if raw.get(key) is not None:
             result[key] = raw[key]
     for key in ('qualities', 'protocols', 'languages'):

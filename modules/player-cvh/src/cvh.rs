@@ -2,7 +2,7 @@ use super::animex::module::types::{Header, StreamDash, StreamData, StreamHls};
 use anm_sdk::protocol::provider_embed::CvhContext;
 use serde::Deserialize;
 
-#[derive(Clone, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Item {
     vk_id: Option<String>,
@@ -43,6 +43,7 @@ fn studio(value: &str) -> String {
 
 fn choose<'a>(items: &'a [Item], context: &CvhContext) -> Result<&'a Item, String> {
     // Never silently substitute a different episode, season, or voice.
+    let wanted_voice = studio(&context.voice);
     items
         .iter()
         .find(|item| {
@@ -51,7 +52,7 @@ fn choose<'a>(items: &'a [Item], context: &CvhContext) -> Result<&'a Item, Strin
                 && item
                     .voice_studio
                     .as_deref()
-                    .is_some_and(|v| studio(v) == studio(&context.voice))
+                    .is_some_and(|v| studio(v) == wanted_voice)
         })
         .ok_or_else(|| "CVH: requested season/episode/dub is unavailable".into())
 }

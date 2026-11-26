@@ -181,10 +181,8 @@ impl exports::animex::module::statistics_api::Guest for Component {
             return Err("shikimori: invalid anime id".into());
         }
         let key = format!("shikimori:v1:statistics:{}", release.id);
-        if let Ok(Some(cached)) = anm_sdk::data_cache_get::<CacheEntry<StatisticsNode>>(&key) {
-            if now_secs().saturating_sub(cached.saved_at) < CACHE_TTL_SECS {
-                return Ok(map_statistics(cached.data));
-            }
+        if let Some(node) = read_cache(&key) {
+            return Ok(map_statistics(node));
         }
         let data: StatisticsData = gql(STATISTICS_QUERY, serde_json::json!({ "id": release.id }))?;
         let node = data
@@ -192,13 +190,7 @@ impl exports::animex::module::statistics_api::Guest for Component {
             .into_iter()
             .find(|n| n.id == release.id)
             .ok_or_else(|| format!("shikimori: anime '{}' not found", release.id))?;
-        let _ = anm_sdk::cache_set(
-            &key,
-            &CacheEntry {
-                saved_at: now_secs(),
-                data: node.clone(),
-            },
-        );
+        write_cache(&key, &node);
         Ok(map_statistics(node))
     }
 }
@@ -386,6 +378,21 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+fn read_cache<T: DeserializeOwned>(key: &str) -> Option<T> {
+    let cached = anm_sdk::data_cache_get::<CacheEntry<T>>(key).ok().flatten()?;
+    (now_secs().saturating_sub(cached.saved_at) < CACHE_TTL_SECS).then_some(cached.data)
+}
+
+fn write_cache<T: Serialize>(key: &str, data: &T) {
+    let _ = anm_sdk::cache_set(
+        key,
+        &CacheEntry {
+            saved_at: now_secs(),
+            data,
+        },
+    );
+}
+
 fn is_rate_limited(error: &str) -> bool {
     error.contains("http status 429")
 }
@@ -424,10 +431,8 @@ fn gql<T: DeserializeOwned>(query: &str, variables: serde_json::Value) -> Result
 
 fn fetch_node(id: &str) -> Result<AnimeNode, String> {
     let key = format!("shikimori:v3:anime:{id}");
-    if let Ok(Some(cached)) = anm_sdk::data_cache_get::<CacheEntry<AnimeNode>>(&key) {
-        if now_secs().saturating_sub(cached.saved_at) < CACHE_TTL_SECS {
-            return Ok(cached.data);
-        }
+    if let Some(node) = read_cache(&key) {
+        return Ok(node);
     }
 
     let data: AnimeData = gql(ANIME_QUERY, serde_json::json!({ "id": id }))?;
@@ -436,13 +441,7 @@ fn fetch_node(id: &str) -> Result<AnimeNode, String> {
         .into_iter()
         .next()
         .ok_or_else(|| format!("shikimori: anime '{id}' not found"))?;
-    let _ = anm_sdk::cache_set(
-        &key,
-        &CacheEntry {
-            saved_at: now_secs(),
-            data: node.clone(),
-        },
-    );
+    write_cache(&key, &node);
     Ok(node)
 }
 
@@ -891,23 +890,13 @@ impl exports::animex::module::similar_titles_api::Guest for Component {
             return Err("shikimori: invalid anime id".into());
         }
         let key = format!("shikimori:v1:similar:{}", release.id);
-        let cached = anm_sdk::data_cache_get::<CacheEntry<Vec<SimilarNode>>>(&key)
-            .ok()
-            .flatten()
-            .filter(|c| now_secs().saturating_sub(c.saved_at) < CACHE_TTL_SECS);
-        let nodes = if let Some(c) = cached {
-            c.data
+        let nodes = if let Some(nodes) = read_cache::<Vec<SimilarNode>>(&key) {
+            nodes
         } else {
             let nodes: Vec<SimilarNode> = retry_rate_limited(||
                 anm_sdk::get_json(&format!("{SITE}/api/animes/{}/similar", release.id))
             )?;
-            let _ = anm_sdk::cache_set(
-                &key,
-                &CacheEntry {
-                    saved_at: now_secs(),
-                    data: nodes.clone(),
-                },
-            );
+            write_cache(&key, &nodes);
             nodes
         };
         Ok(nodes
@@ -954,6 +943,20 @@ export!(Component);
 
 #[cfg(test)]
 mod release_tests {
+    #[test]
+    fn borrowed_cache_data_keeps_the_existing_wire_format() {
+        let data = vec!["similar"];
+        let serialized = serde_json::to_string(&super::CacheEntry {
+            saved_at: 100,
+            data: &data,
+        })
+        .unwrap();
+        assert_eq!(serialized, r#"{"saved_at":100,"data":["similar"]}"#);
+        let restored: super::CacheEntry<Vec<String>> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(restored.saved_at, 100);
+        assert_eq!(restored.data, data);
+    }
+
     #[test]
     fn related_cards_keep_media_identity_and_display_metadata() {
         use super::*;

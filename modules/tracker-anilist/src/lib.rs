@@ -276,7 +276,6 @@ fn valid_id(raw: &str) -> Result<LookupId, String> {
         _ => Err(format!("AniList: unsupported anime id '{raw}'")),
     }
 }
-fn nonempty(value: Option<String>) -> Option<String> { value.filter(|v| !v.trim().is_empty()) }
 fn name(node: &NameNode) -> String { node.full.clone().or_else(|| node.native.clone()).unwrap_or_else(|| "Без имени".into()) }
 fn alternatives(title: &TitleNode, main: &str, synonyms: &[String]) -> Vec<AlternativeName> {
     let mut values = Vec::new();
@@ -291,18 +290,87 @@ fn year(date: &FuzzyDate, fallback: Option<i32>) -> Option<u16> { date.year.or(f
 fn status(value: Option<&str>) -> AiringStatus { match value.unwrap_or_default() { "RELEASING" => AiringStatus::Ongoing, "FINISHED" | "CANCELLED" => AiringStatus::Released, "NOT_YET_RELEASED" | "HIATUS" => AiringStatus::Anons, _ => AiringStatus::Unknown } }
 fn format(value: Option<&str>) -> Option<String> { value.map(str::to_ascii_lowercase) }
 fn tracker_data(media: &MediaNode) -> Vec<TrackerData> { let mut out = vec![TrackerData { name: "AniList".into(), data: media.id.to_string() }]; if let Some(id) = media.id_mal { out.push(TrackerData { name: "MyAnimeList".into(), data: id.to_string() }); } out }
-fn preview(media: &MediaNode) -> AnimePreview {
-    let title = nonempty(media.title.user_preferred.clone()).or_else(|| nonempty(media.title.romaji.clone())).or_else(|| nonempty(media.title.english.clone())).unwrap_or_else(|| format!("AniList #{}", media.id));
-    AnimePreview { id: media.id.to_string(), title: title.clone(), alternative_names: alternatives(&media.title, &title, &media.synonyms), genres: media.genres.clone(), description: media.description.clone(), poster: poster(media), year: year(&media.start_date, media.season_year), score: media.weighted_score.map(|v| v as f32 / 10.0), kind: format(media.format.as_deref()), status: status(media.status.as_deref()), episodes_count: media.episodes.and_then(|v| u32::try_from(v).ok()), tracker_data: tracker_data(media), source_ref: None }
+fn media_title(media: &MediaNode) -> String {
+    [
+        media.title.user_preferred.as_deref(),
+        media.title.romaji.as_deref(),
+        media.title.english.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|title| !title.trim().is_empty())
+    .map(str::to_owned)
+    .unwrap_or_else(|| format!("AniList #{}", media.id))
 }
+
+fn preview(media: &MediaNode) -> AnimePreview {
+    let title = media_title(media);
+    AnimePreview {
+        id: media.id.to_string(),
+        alternative_names: alternatives(&media.title, &title, &media.synonyms),
+        title,
+        genres: media.genres.clone(),
+        description: media.description.clone(),
+        poster: poster(media),
+        year: year(&media.start_date, media.season_year),
+        score: media.weighted_score.map(|v| v as f32 / 10.0),
+        kind: format(media.format.as_deref()),
+        status: status(media.status.as_deref()),
+        episodes_count: media.episodes.and_then(|v| u32::try_from(v).ok()),
+        tracker_data: tracker_data(media),
+        source_ref: None,
+    }
+}
+
 fn release(media: &MediaNode) -> Release {
-    let p = preview(media); Release {
-        studio_details: media.studios.as_ref().map(|studios| studios.nodes.iter().map(|studio|
-            crate::animex::module::types::Studio {
-                name: Some(studio.name.clone()), id: studio.id.map(|id| id.to_string()),
-                url: studio.site_url.clone(), image_url: None,
-            }).collect()), episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
- id: media.id.to_string(), name: p.title.clone(), alternative_names: p.alternative_names.clone(), tracker_data: p.tracker_data.clone(), other_info: if media.tags.is_empty() { vec![] } else { vec![InfoBlock { title: "Теги".into(), data: media.tags.iter().map(|t| t.name.clone()).collect() }] }, banner_url: media.banner_image.clone(), poster: p.poster.clone(), description: media.description.clone(), genres: release_metadata::genres(media.genres.clone()), studios: media.studios.as_ref().map(|s| s.nodes.iter().map(|v| v.name.clone()).collect()).unwrap_or_default(), status: p.status, kind: p.kind.clone(), year: p.year, trailer: media.trailer.as_ref().and_then(|t| trailer_url(t)), total_episodes: media.episodes.and_then(|v| u32::try_from(v).ok()), next_episode_at: media.next_airing_episode.as_ref().and_then(|a| chrono::DateTime::from_timestamp(a.airing_at, 0)).map(|d| d.to_rfc3339()), rating: media.weighted_score.map(|v| v as f32 / 10.0), source_ref: None }
+    let preview = preview(media);
+    Release {
+        id: preview.id,
+        name: preview.title,
+        alternative_names: preview.alternative_names,
+        tracker_data: preview.tracker_data,
+        other_info: if media.tags.is_empty() {
+            vec![]
+        } else {
+            vec![InfoBlock {
+                title: "Теги".into(),
+                data: media.tags.iter().map(|tag| tag.name.clone()).collect(),
+            }]
+        },
+        banner_url: media.banner_image.clone(),
+        poster: preview.poster,
+        description: preview.description,
+        genres: release_metadata::genres(preview.genres),
+        studios: media.studios.as_ref()
+            .map(|studios| studios.nodes.iter().map(|studio| studio.name.clone()).collect())
+            .unwrap_or_default(),
+        studio_details: media.studios.as_ref().map(|studios| {
+            studios.nodes.iter().map(|studio| crate::animex::module::types::Studio {
+                name: Some(studio.name.clone()),
+                id: studio.id.map(|id| id.to_string()),
+                url: studio.site_url.clone(),
+                image_url: None,
+            }).collect()
+        }),
+        status: preview.status,
+        kind: preview.kind,
+        year: preview.year,
+        trailer: media.trailer.as_ref().and_then(trailer_url),
+        total_episodes: preview.episodes_count,
+        next_episode_at: media.next_airing_episode.as_ref()
+            .and_then(|episode| chrono::DateTime::from_timestamp(episode.airing_at, 0))
+            .map(|date| date.to_rfc3339()),
+        rating: preview.score,
+        source_ref: None,
+        episode_duration_seconds: None,
+        aired_from: None,
+        aired_to: None,
+        regional_premieres: vec![],
+        age_rating: None,
+        original_source: None,
+        score_scale: None,
+        url: None,
+    }
 }
 fn trailer_url(t: &Trailer) -> Option<String> { let id = t.id.as_deref()?; match t.site.as_deref().unwrap_or_default().to_ascii_lowercase().as_str() { "youtube" => Some(format!("https://www.youtube.com/watch?v={id}")), "dailymotion" => Some(format!("https://www.dailymotion.com/video/{id}")), _ => Some(format!("https://{}/{}", t.site.as_deref().unwrap_or("anilist.co"), id)) } }
 fn image(image: Option<&ImageNode>) -> Option<String> { image.and_then(|v| v.large.clone().or_else(|| v.medium.clone())) }
@@ -310,7 +378,26 @@ fn character_data(id: i64) -> Vec<TrackerData> { vec![TrackerData { name: "AniLi
 fn character_record(edge: CharacterEdge) -> Option<exports::animex::module::tracker_character_roles_api::CharacterWithRole> { let node = edge.node?; let character = Character { id: node.id.to_string(), name: name(&node.name), alternative_names: node.name.alternative.iter().map(|v| AlternativeName { name: v.clone(), language: "unknown".into() }).collect(), tracker_data: character_data(node.id), image: image(node.image.as_ref()), seiyuu: edge.voice_actors.into_iter().map(staff_ref).collect() }; Some(exports::animex::module::tracker_character_roles_api::CharacterWithRole { character, role: edge.role.map(|v| match v.as_str() { "MAIN" => "main", "SUPPORTING" => "supporting", _ => "none" }.into()) }) }
 fn staff_ref(node: StaffNode) -> StaffRef { StaffRef { id: node.id.to_string(), name: name(&node.name), alternative_names: node.name.alternative.iter().map(|v| AlternativeName { name: v.clone(), language: "unknown".into() }).collect(), image: image(node.image.as_ref()) } }
 fn staff_member(edge: StaffEdge) -> Option<StaffMember> { let node = edge.node?; Some(StaffMember { id: node.id.to_string(), name: name(&node.name), alternative_names: node.name.alternative.iter().map(|v| AlternativeName { name: v.clone(), language: "unknown".into() }).collect(), role: edge.role.unwrap_or_else(|| "Staff".into()), image: image(node.image.as_ref()) }) }
-fn card(media: MediaNode) -> TitleCard { let p = preview(&media); TitleCard { id: media.id.to_string(), name: p.title, alternative_names: p.alternative_names, poster: p.poster, media_type: if media.media_type.as_deref() == Some("MANGA") { MediaType::Manga } else { MediaType::Anime }, format: format(media.format.as_deref()), status: status(media.status.as_deref()), year: year(&media.start_date, media.season_year), tracker_data: tracker_data(&media), source_ref: None, url: media.site_url.or_else(|| Some(format!("{SITE}/anime/{}", media.id))) } }
+fn card(media: MediaNode) -> TitleCard {
+    let name = media_title(&media);
+    TitleCard {
+        id: media.id.to_string(),
+        alternative_names: alternatives(&media.title, &name, &media.synonyms),
+        name,
+        poster: poster(&media),
+        media_type: if media.media_type.as_deref() == Some("MANGA") {
+            MediaType::Manga
+        } else {
+            MediaType::Anime
+        },
+        format: format(media.format.as_deref()),
+        status: status(media.status.as_deref()),
+        year: year(&media.start_date, media.season_year),
+        tracker_data: tracker_data(&media),
+        source_ref: None,
+        url: media.site_url.or_else(|| Some(format!("{SITE}/anime/{}", media.id))),
+    }
+}
 fn episode(item: Airing) -> TrackerEpisode { TrackerEpisode { id: item.id.to_string(), number: item.episode as f64, title: None, alternative_names: vec![], aired_at: chrono::DateTime::from_timestamp(item.airing_at, 0).map(|v| v.to_rfc3339()), rating: None, score_scale: 10, is_filler: None, is_recap: None, url: Some(format!("{SITE}/anime/{}/{}", item.media_id, item.episode)), forum_url: None, video_url: None } }
 fn statistics(media: &MediaNode) -> TitleStatistics {
     let scores = media.stats.as_ref().map(|stats| stats.score_distribution.iter().filter_map(|row| {
@@ -371,7 +458,7 @@ impl exports::animex::module::related_titles_api::Guest for Component {
         let shikimori = fetch_shikimori_cards(&entries.iter().filter_map(|(_, id, _)| *id).collect::<Vec<_>>());
         Ok(entries.into_iter().flat_map(|(title, mal_id, relation)| {
             let enriched = mal_id.and_then(|id| shikimori.get(&id.to_string())).map(|item| RelatedTitle { title: enrich_title_card(title.clone(), Some(item)), relation: relation.clone() });
-            std::iter::once(RelatedTitle { title, relation: relation.clone() }).chain(enriched).collect::<Vec<_>>()
+            std::iter::once(RelatedTitle { title, relation }).chain(enriched)
         }).collect())
     }
 }
@@ -387,7 +474,7 @@ impl exports::animex::module::similar_titles_api::Guest for Component {
         Ok(entries.into_iter().flat_map(|(title, mal_id, rating)| {
             let reason = rating.map(|value| format!("{} рекомендаций", value));
             let enriched = mal_id.and_then(|id| shikimori.get(&id.to_string())).map(|item| SimilarTitle { title: enrich_title_card(title.clone(), Some(item)), reason: reason.clone() });
-            std::iter::once(SimilarTitle { title, reason: reason.clone() }).chain(enriched).collect::<Vec<_>>()
+            std::iter::once(SimilarTitle { title, reason }).chain(enriched)
         }).collect())
     }
 }
@@ -397,6 +484,41 @@ impl exports::animex::module::tracker_episodes_api::Guest for Component { fn get
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn title_mappers_keep_fallback_names_ratings_and_provider_identity() {
+        let media: MediaNode = serde_json::from_value(serde_json::json!({
+            "id": 21,
+            "idMal": 20,
+            "title": {"userPreferred": " ", "romaji": "Naruto", "english": "NARUTO", "native": "ナルト"},
+            "format": "TV",
+            "status": "FINISHED",
+            "seasonYear": 2002,
+            "episodes": 220,
+            "weightedScore": 79,
+            "genres": ["Action"],
+            "coverImage": {"large": "https://example.org/cover"},
+            "studios": {"nodes": [{"id": 1, "name": "Pierrot", "siteUrl": "https://anilist.co/studio/1"}]}
+        }))
+        .unwrap();
+        let preview = preview(&media);
+        let release = release(&media);
+        let card = card(media);
+
+        assert_eq!(preview.title, "Naruto");
+        assert_eq!(release.name, preview.title);
+        assert_eq!(card.name, preview.title);
+        assert_eq!(release.rating, Some(7.9));
+        assert_eq!(release.total_episodes, Some(220));
+        assert_eq!(release.genres[0].name, "Action");
+        assert_eq!(release.studios, ["Pierrot"]);
+        assert_eq!(release.studio_details.unwrap()[0].id.as_deref(), Some("1"));
+        assert_eq!(card.alternative_names.len(), 1);
+        assert_eq!(card.alternative_names[0].name, "ナルト");
+        assert_eq!(card.tracker_data[1].name, "MyAnimeList");
+        assert_eq!(card.tracker_data[1].data, "20");
+        assert_eq!(card.poster, preview.poster);
+    }
 
     #[test]
     fn normalizes_all_anilist_score_buckets_and_preserves_votes() {

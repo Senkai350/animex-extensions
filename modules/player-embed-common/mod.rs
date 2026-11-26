@@ -1,4 +1,5 @@
 //! Shared provider-embed contract validation. No source-specific defaults.
+use crate::animex::module::types::Dub;
 use anm_sdk::protocol::provider_embed::{EmbedPayload, EmbedVariant};
 use url::Url;
 
@@ -19,6 +20,21 @@ pub fn parse(value: &str) -> Result<EmbedPayload, String> {
         https_url(referer)?;
     }
     Ok(payload)
+}
+
+pub fn dubs(value: &str) -> Result<Vec<Dub>, String> {
+    Ok(parse(value)?
+        .variants
+        .into_iter()
+        .enumerate()
+        .map(|(index, variant)| Dub {
+            id: variant.id,
+            name: variant.label,
+            language: variant.language,
+            qualities: vec![],
+            is_default: index == 0,
+        })
+        .collect())
 }
 
 pub fn https_url(value: &str) -> Result<Url, String> {

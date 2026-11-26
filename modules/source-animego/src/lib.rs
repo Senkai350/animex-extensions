@@ -20,6 +20,8 @@ wit_bindgen::generate!({
     world: "source-module-release-details",
 });
 
+use std::collections::HashSet;
+
 use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 
 use animex::module::types::{
@@ -63,7 +65,7 @@ fn site_headers(xhr: bool) -> Vec<(String, String)> {
 
 /// The host owns successful metadata caching, expiry and forced refresh.
 /// Playback pages and embed URLs are never persisted in a guest data cache.
-fn fetch(_key: &str, url: &str, xhr: bool) -> Result<String, String> {
+fn fetch(url: &str, xhr: bool) -> Result<String, String> {
     let response = anm_sdk::http_request(&anm_sdk::HttpRequest {
         url: url.to_string(),
         method: None,
@@ -77,7 +79,7 @@ fn fetch(_key: &str, url: &str, xhr: bool) -> Result<String, String> {
 }
 
 fn fetch_content(url: &str) -> Result<String, String> {
-    let body = fetch(url, url, true)?;
+    let body = fetch(url, true)?;
     parse_xhr(&body)
         .and_then(|parsed| parsed.content().map(str::to_string))
         .ok_or_else(|| "animego: invalid player response".to_string())
@@ -287,8 +289,7 @@ pub(crate) fn parse_voice_buttons(html: &str) -> Vec<VoiceButton> {
 
 /// `(episode_number, data_episode_page)` pairs in the player HTML.
 /// The anime ID for later episodes is the `episode` player page number.
-pub(crate) fn parse_episode_pages(html: &str) -> Vec<(u32, String)> {
-    let document = document(html);
+fn parse_episode_pages(document: &dom_query::Document) -> Vec<(u32, String)> {
     let mut out = Vec::new();
     for node in document.select("[data-episode]").nodes() {
         let node = dom_query::Selection::from(*node);
@@ -312,7 +313,7 @@ pub(crate) fn parse_episode_pages(html: &str) -> Vec<(u32, String)> {
 }
 
 pub(crate) fn episode_page_id(html: &str, number: u32) -> Option<String> {
-    parse_episode_pages(html)
+    parse_episode_pages(&document(html))
         .into_iter()
         .find(|(found, _)| *found == number)
         .map(|(_, page)| page)
@@ -359,10 +360,9 @@ pub(crate) struct CardItem {
 /// page capture) and the older search/catalog grid (`animes-grid-item`,
 /// verified in the moe-parsers/anime-parsers-ru sources). Selectors accept
 /// both so a markup mix never breaks the listing.
-pub(crate) fn parse_cards(html: &str) -> Vec<CardItem> {
-    let document = document(html);
+fn parse_cards(document: &dom_query::Document) -> Vec<CardItem> {
     let mut cards = Vec::new();
-    let mut seen = Vec::new();
+    let mut seen = HashSet::new();
     for node in document
         .select("div.ani-grid__item, div.ani-list__item, div.animes-grid-item")
         .nodes()
@@ -383,7 +383,7 @@ pub(crate) fn parse_cards(html: &str) -> Vec<CardItem> {
         let Some(id) = id_from_href(&link) else {
             continue;
         };
-        if seen.iter().any(|known: &String| known == &id) {
+        if seen.contains(&id) {
             continue;
         }
         let without_id = link.trim_start_matches("/anime/").trim_end_matches('/');
@@ -473,7 +473,7 @@ pub(crate) fn parse_cards(html: &str) -> Vec<CardItem> {
                 };
                 label.map(str::to_string)
             });
-        seen.push(id.clone());
+        seen.insert(id.clone());
         cards.push(CardItem {
             id,
             slug,
@@ -492,8 +492,7 @@ pub(crate) fn parse_cards(html: &str) -> Vec<CardItem> {
 
 /// Whether the listing page has a next page: the pagination block carries a
 /// `next` control or the current page is not the last in `link-square` style.
-pub(crate) fn has_next_page(html: &str, page: u32) -> bool {
-    let document = document(html);
+fn has_next_page(document: &dom_query::Document, page: u32) -> bool {
     if let Some(value) = document
         .select("[data-infinite-scroll-has-more-value]")
         .attr("data-infinite-scroll-has-more-value")
@@ -505,11 +504,14 @@ pub(crate) fn has_next_page(html: &str, page: u32) -> bool {
         return true;
     }
     // `ul.pagination li a` listing `/anime?page=N+1` also proves more pages.
+    let Some(next) = page.checked_add(1) else {
+        return false;
+    };
+    let marker = format!("page={next}");
     for link in document.select("ul.pagination a").nodes() {
         let Some(href) = link.attr("href") else {
             continue;
         };
-        let marker = format!("page={}", page + 1);
         if href.contains(&marker) {
             return true;
         }
@@ -835,10 +837,9 @@ impl Guest for Component {
         if release.id.trim().is_empty() {
             return Err("release id must not be empty".into());
         }
-        let key = format!("animego:release:{}", release.id);
         let url = release_url(&release.id)?;
-        let body = fetch(&key, &url, false)?;
-        map_release(&body, &release.id)
+        let body = fetch(&url, false)?;
+        map_release(&document(&body), &release.id).map(|(release, _)| release)
     }
 
     fn get_episodes(release: ReleaseRef) -> Result<Vec<Episode>, String> {
@@ -852,8 +853,8 @@ impl Guest for Component {
             .filter(|value| *value > 0);
         let root = format!("{}/player/{id}", base());
         let content = fetch_content(&root)?;
-        let mut pages = parse_episode_pages(&content);
         let doc = document(&content);
+        let mut pages = parse_episode_pages(&doc);
         let page_count = doc
             .select("[data-anime-player-episodes-pages-value]")
             .attr("data-anime-player-episodes-pages-value")
@@ -864,9 +865,8 @@ impl Guest for Component {
             return Err("animego: too many episode pages".into());
         }
         for page in 1..page_count {
-            pages.extend(parse_episode_pages(&fetch_content(&format!(
-                "{root}/episodes?page={page}"
-            ))?));
+            let content = fetch_content(&format!("{root}/episodes?page={page}"))?;
+            pages.extend(parse_episode_pages(&document(&content)));
         }
         pages.sort_by_key(|(number, _)| *number);
         pages.dedup_by_key(|(number, _)| *number);
@@ -927,7 +927,7 @@ impl Guest for Component {
             return Err("animego: invalid episode page".into());
         }
         let content = fetch_content(&format!("{root}?episode={page}"))?;
-        Ok(player_candidates(&content, &id, number))
+        Ok(player_candidates_for(&base(), &content, number))
     }
 }
 
@@ -937,10 +937,9 @@ impl exports::animex::module::release_details_api::Guest for Component {
     fn get_release_details(reference: ReleaseRef) -> Result<crate::animex::module::types::Release, String> {
 
         let url = release_url(&reference.id)?;
-        let body = fetch(&format!("animego:release:{}", reference.id), &url, false)?;
-        let mut details = map_release(&body, &reference.id)?;
+        let body = fetch(&url, false)?;
         let document = document(&body);
-        let structured = structured_release(&document);
+        let (mut details, structured) = map_release(&document, &reference.id)?;
         let field = |prefix: &str| details.other_info.iter()
             .find(|block| block.title.to_lowercase().starts_with(prefix))
             .and_then(|block| block.data.first()).map(String::as_str);
@@ -1072,13 +1071,16 @@ fn release_url_for(base: &str, id: &str) -> Result<String, String> {
 }
 
 fn fetch_listing(url: &str, page: u32) -> Result<CatalogPage, String> {
-    let key = format!("animego:list:{url}");
-    let body = fetch(&key, url, false)?;
-    let cards = parse_cards(&body);
+    let body = fetch(url, false)?;
+    Ok(listing_page(&document(&body), page))
+}
+
+fn listing_page(document: &dom_query::Document, page: u32) -> CatalogPage {
+    let cards = parse_cards(document);
     let items: Vec<AnimePreview> = cards.iter().map(preview_from_card).collect();
     let total = items.len() as u32;
-    let has_next = has_next_page(&body, page);
-    Ok(CatalogPage {
+    let has_next = has_next_page(document, page);
+    CatalogPage {
         items,
         meta: PageMeta {
             page,
@@ -1088,7 +1090,7 @@ fn fetch_listing(url: &str, page: u32) -> Result<CatalogPage, String> {
             total_pages: None,
             has_next,
         },
-    })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1156,8 +1158,10 @@ fn release_tracker_data(document: &dom_query::Document) -> Vec<TrackerData> {
     result
 }
 
-fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
-    let document = document(body);
+fn map_release(
+    document: &dom_query::Document,
+    requested_id: &str,
+) -> Result<(Release, serde_json::Value), String> {
     let entity = document.select("div.entity");
     if !entity.exists() {
         return Err(format!(
@@ -1165,7 +1169,7 @@ fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
         ));
     }
 
-    let structured = structured_release(&document);
+    let structured = structured_release(document);
     let title = document
         .select("div.entity h1, h1")
         .nodes()
@@ -1243,7 +1247,7 @@ fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
         })
         .or_else(|| structured["description"].as_str().map(str::to_string));
 
-    let fields = entity_fields(&document);
+    let fields = entity_fields(document);
     let mut other_info = Vec::new();
     for (label, values) in &fields {
         other_info.push(InfoBlock {
@@ -1296,13 +1300,13 @@ fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
                 .and_then(|value| u32::try_from(value).ok())
         });
 
-    Ok(Release {
+    let release = Release {
         studio_details: None, episode_duration_seconds: None, aired_from: None, aired_to: None, regional_premieres: vec![], age_rating: None, original_source: None, score_scale: None, url: None,
 
         id: requested_id.to_string(),
         name: title,
         alternative_names: alt_titles,
-        tracker_data: release_tracker_data(&document),
+        tracker_data: release_tracker_data(document),
         other_info,
         banner_url: banner,
         poster,
@@ -1330,7 +1334,8 @@ fn map_release(body: &str, requested_id: &str) -> Result<Release, String> {
                     .flatten()
             }),
         ),
-    })
+    };
+    Ok((release, structured))
 }
 
 fn source_ref_text(id: &str, duration: Option<u32>) -> Option<String> {
@@ -1350,10 +1355,6 @@ fn numeric_release_id(id: &str) -> Result<String, String> {
         return Err("animego: invalid release id".into());
     }
     Ok(value.to_string())
-}
-
-fn player_candidates(html: &str, release_id: &str, number: u32) -> Vec<PlayerCandidate> {
-    player_candidates_for(&base(), html, release_id, number)
 }
 
 fn cvh_context(embed: &str, number: u32) -> Option<CvhContext> {
@@ -1395,12 +1396,7 @@ fn cvh_context(embed: &str, number: u32) -> Option<CvhContext> {
     })
 }
 
-fn player_candidates_for(
-    site: &str,
-    html: &str,
-    _release_id: &str,
-    number: u32,
-) -> Vec<PlayerCandidate> {
+fn player_candidates_for(site: &str, html: &str, number: u32) -> Vec<PlayerCandidate> {
     let buttons = parse_voice_buttons(html);
     [
         (PLAYER_CVH, "cvh.embed.v1"),

@@ -45,7 +45,6 @@ struct Component;
 fn fetch_document(cache_key: &str, path: &str, ttl_ms: u64) -> Result<dom_query::Document, String> {
     let body = http::get_page(cache_key, path, ttl_ms)?;
     let body = html::trim_for(path, &body);
-    http::cache_trimmed_body(cache_key, body);
     let document = html::document(body);
     Ok(document)
 }

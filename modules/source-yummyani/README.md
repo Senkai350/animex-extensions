@@ -1,7 +1,8 @@
 # YummyAnime source
 
-Bundled source `org.yummyani.source` (0.1.0). Build and package with
-`scripts/build-modules.ps1 -ModuleId org.yummyani.source`; startup installs it.
+Published source `org.yummyani.source`. Build and test without a signing key with
+`pwsh -File scripts/build.ps1 -Test -Unsigned -ModuleId org.yummyani.source`.
+See the [release guide](../../docs/releasing.md) for signed packages.
 
 Implements the JSON API of `old.yummyani.me` (every response is wrapped into
 `{"response": …}` or `{"error": …}`): catalog `GET /api/anime`, search
