@@ -37,11 +37,10 @@ impl Guest for Component {
         quality: Option<String>,
     ) -> Result<StreamData, String> {
         let payload: anilibria_hls::Payload = anm_sdk::protocol::parse_payload(&payload)?;
-        let dubs = dubs(&payload);
         let index = dub_id
             .parse::<usize>()
             .map_err(|_| format!("unknown dub '{dub_id}'"))?;
-        if index >= dubs.len() {
+        if index != 0 {
             return Err(format!("unknown dub '{dub_id}'"));
         }
         let selected = select_quality(&payload, quality.as_deref())?;
@@ -149,6 +148,7 @@ mod tests {
         let stream = Component::get_link(payload.clone(), "0".into(), Some("720p".into())).unwrap();
         let StreamData::Hls(stream) = stream else { panic!("expected HLS"); };
         assert_eq!(stream.url, "https://cdn/720.m3u8");
+        assert!(Component::get_link(payload.clone(), "00".into(), None).is_ok());
         assert!(Component::get_link(payload, "1".into(), None).is_err());
     }
 

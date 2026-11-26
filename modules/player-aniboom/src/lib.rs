@@ -14,19 +14,7 @@ impl Guest for Component {
         })
     }
     fn get_dubs(payload: String) -> Result<Vec<Dub>, String> {
-        let payload = common::parse(&payload)?;
-        Ok(payload
-            .variants
-            .into_iter()
-            .enumerate()
-            .map(|(index, variant)| Dub {
-                id: variant.id,
-                name: variant.label,
-                language: variant.language,
-                qualities: vec![],
-                is_default: index == 0,
-            })
-            .collect())
+        common::dubs(&payload)
     }
     fn get_link(
         payload: String,
