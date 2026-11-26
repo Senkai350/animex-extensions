@@ -65,6 +65,7 @@ class ArtifactTests(unittest.TestCase):
         self.manifest.pop('signature')
         self.manifest['dependencies'] = [dict(id='helper.test', requirement='^1.0.0')]
         self.manifest['app_compatibility'] = dict(min_app_version='>=0.1.0')
+        self.manifest['icon'] = 'data:image/png;base64,iVBORw0KGgo='
         import hashlib
         wasm = b'\0asm\1\0\0\0'
         payload = hashlib.sha256(hashlib.sha256(sync.canonical(self.manifest)).digest() + hashlib.sha256(wasm).digest()).digest()
@@ -76,10 +77,14 @@ class ArtifactTests(unittest.TestCase):
         self.index['modules'][0].update(manifest=self.manifest, size=len(package), sha256=hashlib.sha256(package).hexdigest())
         self.sign()
         sync.validate(self.root, self.pin)
-        self.index['modules'][0]['manifest']['dependencies'][0]['requirement'] = '*'
-        (self.root / 'index.json').write_text(json.dumps(self.index))
-        with self.assertRaises(ValueError):
-            sync.validate(self.root, self.pin)
+        for field, value in [('dependencies', [dict(id='helper.test', requirement='*')]),
+                             ('icon', 'data:image/png;base64,iVBORw0KGgoAAAA=')]:
+            with self.subTest(field=field):
+                tampered = copy.deepcopy(self.index)
+                tampered['modules'][0]['manifest'][field] = value
+                (self.root / 'index.json').write_text(json.dumps(tampered))
+                with self.assertRaisesRegex(ValueError, 'invalid Ed25519 signature'):
+                    sync.validate(self.root, self.pin)
 
     def test_modified_package(self):
         with (self.root / 'test.anmx').open('ab') as f:
