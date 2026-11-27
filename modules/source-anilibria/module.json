@@ -2,7 +2,7 @@
   "id": "org.anilibria.source",
   "kind": "source",
   "name": "AniLibria",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "api_version": 3,
   "author": {
     "name": "AniMex community",
@@ -19,7 +19,7 @@
     ],
     "storage": true
   },
-  "description": "Official AniLibria source: catalog, search, filters, release metadata and players.",
+  "description": "Official AniLibria source: catalog, release metadata, players and AniLiberty watch progress sync.",
   "protocols": [
     "anilibria.hls.v1"
   ],

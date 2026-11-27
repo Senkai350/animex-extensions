@@ -7,8 +7,10 @@
 
 wit_bindgen::generate!({
     path: "../../vendor/sdk/wit",
-    world: "source-module-release-details",
+    world: "source-module-release-details-hooks",
 });
+
+mod progress;
 
 use std::cmp::Ordering;
 use std::collections::HashSet;

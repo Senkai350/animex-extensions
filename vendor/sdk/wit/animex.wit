@@ -600,3 +600,50 @@ world tracker-module-release-details-character-roles {
   include tracker-module-character-roles;
   export release-details-api;
 }
+
+/// Optional settings schema, shared by sources, trackers and players.
+/// Current values are available through host.config-get("settings.<id>").
+interface extension-settings-api {
+  enum setting-kind { input, select }
+  record setting-option { value: string, label: string }
+  record setting-field {
+    id: string,
+    kind: setting-kind,
+    label: option<string>,
+    description: option<string>,
+    options: list<setting-option>,
+    secret: bool,
+  }
+  settings: func() -> list<setting-field>;
+}
+world extension-settings-reader { export extension-settings-api; }
+
+/// Optional playback lifecycle shared by all module kinds. Payloads use source
+/// identifiers and contain no playback references, links or credentials.
+interface episode-hooks-api {
+  record release-identity { source-id: string, release-id: string }
+  record episode-identity {
+    release: release-identity,
+    episode-id: string,
+    number: option<f64>,
+  }
+  record episode-progress { position-sec: f64, duration-sec: option<f64>, watched: bool }
+  record hook-episode { episode-id: string, number: option<f64> }
+  record remote-episode-progress {
+    episode-id: string,
+    position-sec: option<f64>,
+    duration-sec: option<f64>,
+    watched: option<bool>,
+    updated-at: option<string>,
+  }
+  progress-updated: func(episode: episode-identity, progress: episode-progress) -> result<_, string>;
+  episode-watched: func(episode: episode-identity, watched: bool) -> result<_, string>;
+  episodes-loaded: func(release: release-identity, episodes: list<hook-episode>) -> result<list<remote-episode-progress>, string>;
+}
+world episode-hooks-reader { export episode-hooks-api; }
+
+world source-module-release-details-hooks {
+  include source-module-release-details;
+  export extension-settings-api;
+  export episode-hooks-api;
+}
