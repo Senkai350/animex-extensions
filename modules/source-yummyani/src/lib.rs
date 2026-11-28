@@ -1,28 +1,11 @@
 //! YummyAnime source module (`org.yummyani.source`).
 //!
-//! Implements the WIT `source-api` interface on top of the JSON API of
-//! `old.yummyani.me`. Endpoints were verified against live API captures and
-//! the site's own frontend client:
-//!
-//! - catalog:  `GET /api/anime?limit=…&offset=…&sort=…&status=…` (`sort`
-//!   accepts `title`, `year`, `rating`, `rating_counters`, `views`, `top`,
-//!   `random`, `id`; `status` accepts `ongoing`, `released`,
-//!   `announcement`; every date-added or descending value is rejected by
-//!   the site)
-//! - search:   `GET /api/search?q=…&limit=…&offset=…` (the site client sends
-//!   these parameters; whether the API honors `offset` past the first page
-//!   is not verified, so no filter or sort is advertised for search)
-//! - release:  `GET /api/anime/{anime_id}` (numeric id, `anime_url` is a slug)
-//! - episodes: `GET /api/anime/{anime_id}/videos` (numbers, durations, skips)
-//! - players:  a fresh `GET /api/anime/{anime_id}/videos` per request
-//!
-//! Every response is wrapped into `{"response": …}` or `{"error": …}`. Pages
-//! hold 20 items and request one extra row to prove the next page; the extra
-//! row only proves `has_next` and is never shown. The site has no updates
-//! feed and rejects descending sorts, so the reserved `get_latest` and
-//! `get_popular` feeds return a documented successful empty page instead of
-//! inventing rows or mislabelling ascending views as popular. No fictional
-//! filters are offered: only the validated `status` aliases above.
+//! Uses the YummyAnime JSON API at `old.yummyani.me`.
+//! Catalog and title search both use `GET /api/anime` with the site's
+//! filters and sort parameters. Lists request one extra row to detect the
+//! next page. Picking a random title requests a single matching row.
+//! Release details use `GET /api/anime/{anime_id}`; episodes and players use
+//! `GET /api/anime/{anime_id}/videos`. Responses wrap results in `response`.
 //!
 //! Playback candidates are grouped per site player (`data.player_id`:
 //! 1 Aksor, 2 Alloha, 3 CVH, 4 Kodik) with one dub variant per voice and
@@ -43,11 +26,13 @@ wit_bindgen::generate!({
     world: "source-module-release-details",
 });
 
+mod catalog;
+
 use anm_sdk::protocol::provider_embed::{CvhContext, EmbedPayload, EmbedVariant};
 
 use animex::module::types::{
     AiringStatus, AlternativeName, AnimePreview, CatalogPage, CatalogParams, Episode, EpisodeRef,
-    FilterField, FilterSelect, InfoBlock, OptionPair, PageMeta, PlayerCandidate, Release,
+    FilterField, InfoBlock, PageMeta, PlayerCandidate, Release,
     ReleaseRef, TimeSkip, TimeSkipType, TrackerData,
 };
 use exports::animex::module::catalog_sorting_api::Guest as SortingGuest;
@@ -102,12 +87,6 @@ const KODIK_HOSTS: &[&str] = &[
     "aniqit.com",
     "kodikonline.com",
 ];
-
-/// Real ascending `sort` values of the site API; anything else is rejected.
-const SORTS: &[&str] = &["year", "title", "rating", "views", "id"];
-/// Real `status` aliases accepted by the site catalog; anything else is
-/// rejected without echoing the raw selection.
-const STATUSES: &[&str] = &["ongoing", "released", "announcement"];
 
 // ---------------------------------------------------------------------------
 // Host HTTP helpers (no independent metadata cache).
@@ -323,21 +302,6 @@ fn clean(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-/// UI selections are JSON objects; older callers may send JSON strings or
-/// plain values. Decode the wire format before mapping it to site parameters.
-fn option_value(value: &str) -> String {
-    let value = value.trim();
-    match serde_json::from_str::<serde_json::Value>(value) {
-        Ok(serde_json::Value::String(value)) => value,
-        Ok(serde_json::Value::Object(value)) => value
-            .get("value")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string(),
-        _ => value.to_string(),
-    }
 }
 
 /// The episode number of a video row: the site usually sends a string.
@@ -865,46 +829,11 @@ fn player_candidates(rows: &[&VideoRow]) -> Vec<PlayerCandidate> {
 // Request building.
 // ---------------------------------------------------------------------------
 
-fn page_offset(page: u32) -> u32 {
-    page.saturating_sub(1).saturating_mul(PAGE_SIZE)
-}
-
 fn api_url_for(base: &str, path: &str, query: &[(&str, String)]) -> Result<String, String> {
     let mut url = Url::parse(&format!("{base}{path}")).map_err(|e| format!("yummyani url: {e}"))?;
     url.query_pairs_mut()
         .extend_pairs(query.iter().map(|(key, value)| (*key, value.as_str())));
     Ok(url.to_string())
-}
-
-fn catalog_url_for(
-    base: &str,
-    page: u32,
-    sort: Option<&str>,
-    status: Option<&str>,
-) -> Result<String, String> {
-    let mut query = vec![
-        ("limit", PROBE_SIZE.to_string()),
-        ("offset", page_offset(page).to_string()),
-    ];
-    if let Some(sort) = sort {
-        query.push(("sort", sort.to_string()));
-    }
-    if let Some(status) = status {
-        query.push(("status", status.to_string()));
-    }
-    api_url_for(base, "/api/anime", &query)
-}
-
-fn search_url_for(base: &str, query: &str, page: u32) -> Result<String, String> {
-    api_url_for(
-        base,
-        "/api/search",
-        &[
-            ("q", query.to_string()),
-            ("limit", PROBE_SIZE.to_string()),
-            ("offset", page_offset(page).to_string()),
-        ],
-    )
 }
 
 fn release_url_for(base: &str, id: &str) -> Result<String, String> {
@@ -914,49 +843,6 @@ fn release_url_for(base: &str, id: &str) -> Result<String, String> {
 fn videos_url_for(base: &str, id: &str) -> Result<String, String> {
     api_url_for(base, &format!("/api/anime/{id}/videos"), &[])
 }
-
-/// Only real ascending site sorts; unknown values fail without echoing the
-/// raw selection.
-fn sort_of(params: &CatalogParams) -> Result<Option<String>, String> {
-    let value = params
-        .sort
-        .as_deref()
-        .or_else(|| {
-            params
-                .filters
-                .iter()
-                .find(|(key, _)| key == "sort")
-                .map(|(_, value)| value.as_str())
-        })
-        .map(option_value)
-        .filter(|value| !value.is_empty());
-    match value {
-        None => Ok(None),
-        Some(value) if SORTS.contains(&value.as_str()) => Ok(Some(value)),
-        Some(_) => Err("yummyani: unsupported sort value".to_string()),
-    }
-}
-
-/// Only the validated site status aliases; unknown values fail without
-/// echoing the raw selection.
-fn status_filter_of(params: &CatalogParams) -> Result<Option<String>, String> {
-    let value = params
-        .filters
-        .iter()
-        .find(|(key, _)| key == "status")
-        .map(|(_, value)| value.as_str())
-        .map(option_value)
-        .filter(|value| !value.is_empty());
-    match value {
-        None => Ok(None),
-        Some(value) if STATUSES.contains(&value.as_str()) => Ok(Some(value)),
-        Some(_) => Err("yummyani: unsupported status filter".to_string()),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Listing pages.
-// ---------------------------------------------------------------------------
 
 fn listing_page(body: &str, page: u32) -> Result<CatalogPage, String> {
     let raw: Vec<AnimeItem> = decode(body, "catalog")?;
@@ -1010,103 +896,48 @@ impl FilterUiGuest for Component {
     fn get_filter_ui(
     ) -> Result<Vec<exports::animex::module::filter_ui_api::FilterPresentation>, String> {
         use exports::animex::module::filter_ui_api::{ChoicePresentation, FilterPresentation};
-        // One validated filter: the site status aliases.
-        Ok(vec![FilterPresentation {
-            id: "status".to_string(),
-            presentation: ChoicePresentation::Dropdown,
-        }])
+        Ok(["types", "status", "season", "min_age"]
+            .into_iter()
+            .map(|id| FilterPresentation {
+                id: id.to_string(),
+                presentation: ChoicePresentation::CheckboxSelect,
+            })
+            .collect())
     }
 }
 
 impl SortingGuest for Component {
     fn get_sorting(
     ) -> Result<Option<exports::animex::module::catalog_sorting_api::SortingConfig>, String> {
-        use exports::animex::module::catalog_sorting_api::SortingConfig;
-        Ok(Some(SortingConfig {
-            id: "sort".to_string(),
-            label: "Сортировка".to_string(),
-            options: sort_options(),
-            default: None,
-            // The site rejects descending sorts (`-year` is not in the enum).
-            directions: Vec::new(),
-            default_direction: None,
-        }))
+        Ok(Some(catalog::sorting()))
     }
-}
-
-fn sort_options() -> Vec<OptionPair> {
-    labeled_options(&[
-        ("year", "По году"),
-        ("title", "По названию"),
-        ("rating", "По рейтингу"),
-        ("views", "По просмотрам"),
-        ("id", "По идентификатору"),
-    ])
-}
-
-fn status_options() -> Vec<OptionPair> {
-    labeled_options(&[
-        ("ongoing", "Онгоинг"),
-        ("released", "Вышел"),
-        ("announcement", "Анонс"),
-    ])
-}
-
-fn labeled_options(values: &[(&str, &str)]) -> Vec<OptionPair> {
-    values
-        .iter()
-        .map(|(value, label)| OptionPair {
-            value: value.to_string(),
-            label: label.to_string(),
-        })
-        .collect()
 }
 
 impl Guest for Component {
     fn get_filters() -> Result<Vec<FilterField>, String> {
-        // Only the validated status aliases; no fictional filters.
-        Ok(vec![FilterField::Select(FilterSelect {
-            id: "status".to_string(),
-            label: "Статус".to_string(),
-            options: status_options(),
-            default: None,
-        })])
+        Ok(catalog::filters())
     }
 
     fn get_catalog(params: CatalogParams) -> Result<CatalogPage, String> {
-        if let Some(query) = clean(params.search.clone()) {
-            // The site client sends `q`, `limit` and `offset` to the search
-            // endpoint; whether the API honors `offset` past the first page
-            // is not verified, so no filter or sort is advertised for search.
-            return Self::search(query, params);
-        }
-        let sort = sort_of(&params)?;
-        let status = status_filter_of(&params)?;
         fetch_listing(
-            &catalog_url_for(&base(), params.page, sort.as_deref(), status.as_deref())?,
+            &catalog::url(&base(), params.search.as_deref(), &params)?,
             params.page,
         )
     }
 
     fn get_latest(page: u32) -> Result<CatalogPage, String> {
-        // Reserved feed: the API `sort` enum rejects every date-added value,
-        // so the site has no updates feed. A successful empty page represents
-        // the unsupported operation without inventing rows and without
-        // turning the home view's allSettled into a global error.
+        // The API provides release-year order but no catalog-update sort.
         Ok(unsupported_page(page))
     }
 
     fn get_popular(page: u32) -> Result<CatalogPage, String> {
-        // Reserved feed: the API rejects descending sorts (`-views` is not
-        // in the enum), so ascending views would label the least-viewed
-        // titles as popular. No verified ordering exists; an empty page
-        // avoids the mislabelling.
+        // This source does not expose a separate popular feed.
         Ok(unsupported_page(page))
     }
 
     fn search(query: String, params: CatalogParams) -> Result<CatalogPage, String> {
         fetch_listing(
-            &search_url_for(&base(), query.trim(), params.page)?,
+            &catalog::url(&base(), Some(&query), &params)?,
             params.page,
         )
     }

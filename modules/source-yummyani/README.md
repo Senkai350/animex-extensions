@@ -1,27 +1,21 @@
 # YummyAnime source
 
-Bundled source `org.yummyani.source` (0.1.0). Build and package with
-`scripts/build-modules.ps1 -ModuleId org.yummyani.source`; startup installs it.
+Source module `org.yummyani.source`. See [the release workflow](../../docs/releasing.md).
 
-Implements the JSON API of `old.yummyani.me` (every response is wrapped into
-`{"response": …}` or `{"error": …}`): catalog `GET /api/anime`, search
-`GET /api/search?q=…`, release `GET /api/anime/{id}`, episodes and players
-`GET /api/anime/{id}/videos`. Release ids are the numeric site `anime_id`;
-`anime_url` is only a web-route slug and never an API key. Catalog pages hold
-20 items and request one extra row (`limit=21&offset=(page-1)*20`) to prove
-the next page; the extra row only proves `has_next` and is never shown. Only
-the real ascending site sorts (`year`, `title`, `rating`, `views`, `id`) are
-offered; the API enum rejects descending and date-added values, and the only
-offered filter is the validated `status` select (`ongoing`, `released`,
-`announcement`) sent as `status=…` on `/api/anime`. Search behavior beyond
-`q`/`limit`/`offset` is not verified, so no filter or sort is advertised for
-search (the site client does send `offset`, but whether the API honors it
-past the first page is unconfirmed).
+The module uses `GET /api/anime` for the catalog and title search,
+`GET /api/anime/{id}` for releases, and `GET /api/anime/{id}/videos` for
+episodes and players. Release IDs are numeric `anime_id` values. Catalog
+pages show 20 titles and request one extra row to detect the next page.
 
-Reserved feeds: the site has no updates feed and rejects descending sorts, so
-`get_latest` and `get_popular` return a documented successful empty page —
-an empty page means "unsupported operation", never fictitious rows, never
-least-viewed titles mislabelled as popular, and never a global home error.
+The catalog offers the site's genre inclusion and exclusion, types, statuses,
+year bounds, seasons, episode count bounds and age ratings. The genre IDs and
+labels come from the site's public filter form. The API combines these filters
+with `q` and supports either direction through `sort_forward`. The default
+puts the most relevant results first, orders titles A–Z, and uses descending
+order for numeric sorts. The random-title action uses
+`sort=random&limit=1` with the same active filters.
+
+The reserved `get_latest` and `get_popular` feeds return a successful empty page.
 
 Videos are grouped by the site `data.player_id` (1 Aksor, 2 Alloha, 3 CVH,
 4 Kodik) into independent candidates with one dub variant per exact voice —

@@ -65,24 +65,46 @@ fn decode_rows(body: &str) -> Vec<VideoRow> {
 // --- pagination ----------------------------------------------------------------
 
 #[test]
-fn catalog_urls_use_the_probe_limit_offset_and_status() {
+fn catalog_search_combines_site_filters_sort_and_pagination() {
+    let params = CatalogParams {
+        page: 3,
+        sort: Some(r#"{"value":"rating_counters","direction":"desc"}"#.into()),
+        search: None,
+        filters: [
+            ("genres", r#"["16","15"]"#),
+            ("exclude_genres", r#"["42"]"#),
+            ("types", r#"["1","7"]"#),
+            ("status", r#"["released","ongoing"]"#),
+            ("year", "[2021,null]"),
+            ("season", r#"["1","4"]"#),
+            ("episodes", "[null,0]"),
+            ("min_age", r#"["2","3"]"#),
+        ]
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .to_vec(),
+    };
+
+    let url = Url::parse(&catalog::url(TEST_BASE, Some("  ромелия  "), &params).unwrap()).unwrap();
+    assert_eq!(url.path(), "/api/anime");
     assert_eq!(
-        catalog_url_for(TEST_BASE, 1, None, None).unwrap(),
-        "https://old.yummyani.me/api/anime?limit=21&offset=0"
+        url.query_pairs().collect::<Vec<_>>(),
+        [
+            ("limit", "21"),
+            ("offset", "40"),
+            ("q", "ромелия"),
+            ("sort", "rating_counters"),
+            ("sort_forward", "false"),
+            ("genres", "16,15"),
+            ("exclude_genres", "42"),
+            ("types", "1,7"),
+            ("status", "released,ongoing"),
+            ("season", "1,4"),
+            ("min_age", "2,3"),
+            ("from_year", "2021"),
+            ("ep_to", "0"),
+        ]
+        .map(|(k, v)| (k.into(), v.into()))
     );
-    assert_eq!(
-        catalog_url_for(TEST_BASE, 3, Some("year"), Some("ongoing")).unwrap(),
-        "https://old.yummyani.me/api/anime?limit=21&offset=40&sort=year&status=ongoing"
-    );
-    let url = Url::parse(&search_url_for(TEST_BASE, "ромелия", 2).unwrap()).unwrap();
-    assert_eq!(url.path(), "/api/search");
-    let query: Vec<(String, String)> = url
-        .query_pairs()
-        .map(|(k, v)| (k.into_owned(), v.into_owned()))
-        .collect();
-    assert!(query.contains(&("q".to_string(), "ромелия".to_string())));
-    assert!(query.contains(&("limit".to_string(), "21".to_string())));
-    assert!(query.contains(&("offset".to_string(), "20".to_string())));
 }
 
 #[test]
@@ -135,100 +157,114 @@ fn error_envelopes_surface_the_site_reason() {
 
 // --- sorting, filters and reserved feeds ----------------------------------------
 
-#[test]
-fn only_real_ascending_sorts_are_accepted() {
-    let params = |sort: Option<String>| CatalogParams {
-        page: 1,
-        search: None,
-        sort,
-        filters: vec![],
-    };
-    assert_eq!(
-        sort_of(&params(Some("views".into()))),
-        Ok(Some("views".into()))
-    );
-    assert_eq!(
-        sort_of(&params(Some(serde_json::json!("rating").to_string()))),
-        Ok(Some("rating".into()))
-    );
-    assert_eq!(
-        sort_of(&params(Some(
-            serde_json::json!({"value": "year"}).to_string()
-        ))),
-        Ok(Some("year".into()))
-    );
-    assert_eq!(sort_of(&params(None)), Ok(None));
-    // Unknown selections fail without echoing the raw value.
-    let error = sort_of(&params(Some("SECRETSORT".into()))).unwrap_err();
-    assert!(!error.contains("SECRETSORT"), "{error}");
-    assert!(sort_of(&params(Some("-rating".into()))).is_err());
-
-    let sorting = Component::get_sorting().unwrap().unwrap();
-    assert_eq!(sorting.id, "sort");
-    assert_eq!(sorting.options.len(), 5);
-    assert!(sorting.directions.is_empty());
-}
-
-#[test]
-fn only_validated_status_aliases_are_offered_and_sent() {
-    let params = |status: Option<&str>| CatalogParams {
+fn catalog_params() -> CatalogParams {
+    CatalogParams {
         page: 1,
         search: None,
         sort: None,
-        filters: status
-            .map(|status| vec![("status".to_string(), status.to_string())])
-            .unwrap_or_default(),
-    };
-    assert_eq!(status_filter_of(&params(None)), Ok(None));
-    assert_eq!(
-        status_filter_of(&params(Some("ongoing"))),
-        Ok(Some("ongoing".into()))
-    );
-    assert_eq!(
-        status_filter_of(&params(Some(
-            serde_json::json!({"value": "released"})
-                .to_string()
-                .as_str()
-        ))),
-        Ok(Some("released".into()))
-    );
-    let error = status_filter_of(&params(Some("SECRETSTATUS"))).unwrap_err();
-    assert!(!error.contains("SECRETSTATUS"), "{error}");
-
-    let filters = Component::get_filters().unwrap();
-    assert_eq!(filters.len(), 1);
-    match &filters[0] {
-        FilterField::Select(select) => {
-            assert_eq!(select.id, "status");
-            let values: Vec<&str> = select
-                .options
-                .iter()
-                .map(|option| option.value.as_str())
-                .collect();
-            assert_eq!(values, vec!["ongoing", "released", "announcement"]);
-        }
-        _ => panic!("expected a select filter"),
+        filters: Vec::new(),
     }
-    let ui = Component::get_filter_ui().unwrap();
-    assert_eq!(ui.len(), 1);
-    assert_eq!(ui[0].id, "status");
 }
 
 #[test]
-fn reserved_feeds_report_successful_empty_pages() {
-    // The site has no updates feed and no verified descending views
-    // ordering: an empty page represents the unsupported operation instead
-    // of a global home error or mislabelled ascending rows.
-    let latest = Component::get_latest(1).unwrap();
-    assert!(latest.items.is_empty());
-    assert!(!latest.meta.has_next);
-    let popular = Component::get_popular(2).unwrap();
-    assert!(popular.items.is_empty());
-    assert!(!popular.meta.has_next);
-    assert_eq!(popular.meta.page, 2);
+fn absent_filters_leave_yummyanime_defaults_intact() {
+    let mut params = catalog_params();
+    params.filters = vec![
+        ("genres".into(), "[]".into()),
+        ("year".into(), "null".into()),
+        ("episodes".into(), "[null,null]".into()),
+    ];
+    assert_eq!(
+        catalog::url(TEST_BASE, None, &params).unwrap(),
+        "https://old.yummyani.me/api/anime?limit=21&offset=0"
+    );
 }
 
-// --- release -------------------------------------------------------------------
+#[test]
+fn sort_supports_site_defaults_and_direction_overrides() {
+    let mut params = catalog_params();
+    for (value, direction, expected) in [
+        ("title", "auto", "true"),
+        ("top", "auto", "true"),
+        ("year", "auto", "false"),
+        ("views", "asc", "true"),
+        ("title", "desc", "false"),
+    ] {
+        params.sort = Some(serde_json::json!({"value":value,"direction":direction}).to_string());
+        let url = catalog::url(TEST_BASE, None, &params).unwrap();
+        assert!(url.ends_with(&format!("&sort={value}&sort_forward={expected}")));
+    }
+
+    params.sort = Some("-rating".into());
+    assert!(catalog::url(TEST_BASE, None, &params).is_err());
+    params.sort = Some(r#"{"value":"rating","direction":"bogus"}"#.into());
+    assert!(catalog::url(TEST_BASE, None, &params).is_err());
+}
+
+#[test]
+fn random_catalog_picks_one_title_from_the_filtered_results() {
+    let mut params = catalog_params();
+    params.page = 3;
+    params.sort = Some(r#"{"value":"random","direction":"desc"}"#.into());
+    params.filters = vec![("status".into(), r#""ongoing""#.into())];
+    assert_eq!(
+        catalog::url(TEST_BASE, None, &params).unwrap(),
+        "https://old.yummyani.me/api/anime?limit=1&offset=0&sort=random&status=ongoing"
+    );
+}
+
+#[test]
+fn invalid_filter_values_are_rejected_and_legacy_status_is_accepted() {
+    let mut params = catalog_params();
+    params.filters = vec![("status".into(), "ongoing".into())];
+    assert!(catalog::url(TEST_BASE, None, &params).unwrap().ends_with("&status=ongoing"));
+
+    for (field, raw) in [
+        ("genres", r#"["SECRETGENRE"]"#),
+        ("year", "[1899,2025]"),
+        ("episodes", "[0,-1]"),
+    ] {
+        params.filters = vec![(field.into(), raw.into())];
+        let error = catalog::url(TEST_BASE, None, &params).unwrap_err();
+        assert!(!error.contains("SECRETGENRE"));
+    }
+}
+
+#[test]
+fn filter_metadata_exposes_both_uses_of_the_genre_taxonomy_and_open_ranges() {
+    let fields = Component::get_filters().unwrap();
+    assert_eq!(fields.len(), 8);
+    let (FilterField::Multiselect(include), FilterField::Multiselect(exclude)) =
+        (&fields[0], &fields[1])
+    else {
+        panic!("expected two genre selectors");
+    };
+    assert_eq!(include.id, "genres");
+    assert_eq!(exclude.id, "exclude_genres");
+    assert_eq!(include.options.len(), 104);
+    assert_eq!(
+        include.options.iter().map(|option| (&option.value, &option.label)).collect::<Vec<_>>(),
+        exclude.options.iter().map(|option| (&option.value, &option.label)).collect::<Vec<_>>()
+    );
+    assert!(include.options.iter().any(|option| option.value == "16" && option.label == "Комедия"));
+    assert!(matches!(&fields[4], FilterField::Range(range) if range.default.is_none()));
+    assert!(matches!(&fields[6], FilterField::Range(range) if range.default.is_none()));
+
+    let sort = Component::get_sorting().unwrap().unwrap();
+    assert_eq!(sort.default.as_deref(), Some("top"));
+    assert_eq!(sort.default_direction.as_deref(), Some("auto"));
+    assert!(sort.options.iter().any(|option| option.value == "random"));
+}
+
+#[test]
+fn reserved_feeds_return_successful_empty_pages() {
+    for result in [Component::get_latest(2), Component::get_popular(2)] {
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.meta.page, 2);
+        assert!(!page.meta.has_next);
+    }
+}
 
 const RELEASE_BODY: &str = r#"{"response":{"anime_id":15921,"title":"Военная хроника Ромелии","description":"Короткое описание выпуска.","poster":{"fullsize":"//imgproxy.yani.tv/posters/full/x.jpg","big":"//imgproxy.yani.tv/posters/big/x.webp","small":"//imgproxy.yani.tv/posters/small/x.webp","medium":"//imgproxy.yani.tv/posters/medium/x.webp"},"rating":{"average":8.41},"genres":[{"title":"Фэнтези"},{"title":"Экшен"}],"studios":[{"title":"Atra"}],"year":2026,"anime_status":{"value":1,"title":"онгоинг","alias":"ongoing"},"type":{"name":"Сериал","value":1,"shortname":"ТВ","alias":"tv"},"remote_ids":{"worldart_id":12685,"shikimori_id":59787,"myanimelist_id":59787,"kp_id":0},"other_titles":["Romelia Senki","ロメリア戦記","Воєнна хроніка Ромелії"],"episodes":{"count":12,"aired":7,"next_date":1795444200},"min_age":{"value":3,"title_long":"PG-13 (от 13 лет)"},"original":"Ранобэ"}}"#;
 
