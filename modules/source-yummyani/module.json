@@ -2,7 +2,7 @@
   "id": "org.yummyani.source",
   "kind": "source",
   "name": "YummyAnime",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "api_version": 3,
   "author": {
     "name": "AniMex community",
