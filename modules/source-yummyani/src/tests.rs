@@ -247,8 +247,8 @@ fn filter_metadata_exposes_both_uses_of_the_genre_taxonomy_and_open_ranges() {
         exclude.options.iter().map(|option| (&option.value, &option.label)).collect::<Vec<_>>()
     );
     assert!(include.options.iter().any(|option| option.value == "16" && option.label == "Комедия"));
-    assert!(matches!(&fields[4], FilterField::Range(range) if range.default.is_none()));
-    assert!(matches!(&fields[6], FilterField::Range(range) if range.default.is_none()));
+    assert!(matches!(&fields[2], FilterField::Range(range) if range.default.is_none() && range.id == "year"));
+    assert!(matches!(&fields[3], FilterField::Range(range) if range.default.is_none() && range.id == "episodes"));
 
     let sort = Component::get_sorting().unwrap().unwrap();
     assert_eq!(sort.default.as_deref(), Some("top"));

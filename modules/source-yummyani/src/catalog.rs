@@ -57,11 +57,11 @@ pub(super) fn filters() -> Vec<FilterField> {
     vec![
         multiselect("genres", "Жанры", GENRES),
         multiselect("exclude_genres", "Исключить жанры", GENRES),
+        range("year", "Год", MIN_YEAR, max_year()),
+        range("episodes", "Количество серий", 0, MAX_EPISODES),
         multiselect("types", "Тип аниме", TYPES),
         multiselect("status", "Статус аниме", STATUSES),
-        range("year", "Год", MIN_YEAR, max_year()),
         multiselect("season", "Сезон", SEASONS),
-        range("episodes", "Количество серий", 0, MAX_EPISODES),
         multiselect("min_age", "Возрастной рейтинг", AGES),
     ]
 }

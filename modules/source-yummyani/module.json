@@ -2,14 +2,14 @@
   "id": "org.yummyani.source",
   "kind": "source",
   "name": "YummyAnime",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "api_version": 3,
   "author": {
     "name": "AniMex community",
     "contact": "https://github.com/Senkai350/animex",
     "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
   },
-  "released_at": "2026-11-21T00:00:00Z",
+  "released_at": "2026-11-28T00:00:00Z",
   "entry": "module.wasm",
   "permissions": {
     "network": [
